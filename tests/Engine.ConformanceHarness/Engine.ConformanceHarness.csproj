@@ -26,4 +26,26 @@
                        ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <!-- Flatten plugin.json + both built DLLs into one directory under this
+       project's own output — plugins/sandbox.echo/ — matching the flat
+       layout PluginHost.Load(directory) expects. The ProjectReference
+       above guarantees these DLLs exist by the time this runs (transitive
+       build order also covers Sandbox.Echo.Contracts, which Sandbox.Echo
+       itself references). $(Configuration)/$(TargetFramework) keep this
+       correct in Release, not just Debug. -->
+  <ItemGroup>
+    <None Include="..\..\plugins\sandbox.echo\plugin.json">
+      <Link>plugins\sandbox.echo\plugin.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\plugins\sandbox.echo\Sandbox.Echo.Contracts\bin\$(Configuration)\$(TargetFramework)\Sandbox.Echo.Contracts.dll">
+      <Link>plugins\sandbox.echo\Sandbox.Echo.Contracts.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\plugins\sandbox.echo\Sandbox.Echo\bin\$(Configuration)\$(TargetFramework)\Sandbox.Echo.dll">
+      <Link>plugins\sandbox.echo\Sandbox.Echo.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

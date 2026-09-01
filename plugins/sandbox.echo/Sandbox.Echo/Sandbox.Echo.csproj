@@ -1,5 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <!-- Generates the deps.json AssemblyDependencyResolver needs to find
+         this plugin's own private dependencies once it has any — see
+         PluginLoadContext in Engine.Kernel. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Engine.Kernel\Engine.Kernel.csproj" />
     <ProjectReference Include="..\Sandbox.Echo.Contracts\Sandbox.Echo.Contracts.csproj" />
