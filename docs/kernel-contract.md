@@ -9,6 +9,7 @@ plugins alike, will be written by an LLM agent rather than a human.
 - **Platforms** — Linux, Windows
 - **Kernel** — BCL only, no dependencies
 - **Object model** — `GameObject` / `Component`
+- **Physics** — [Box3D](https://github.com/erincatto/box3d) (C, MIT), bound via P/Invoke — not our own
 - **Primary author** — an agent
 - **Goal** — Play-in-editor with no domain reload
 
@@ -337,7 +338,7 @@ exists to enable.
 | Risk | The problem | Mitigation |
 |---|---|---|
 | **ALC leaks** — the main killer | Unload silently fails from one forgotten reference. Symptom: memory growth after N reloads; cause takes days to find. | 200-cycle test in CI. Diagnose pinning references in the host itself, not via an external profiler. |
-| **Scope** | The kernel is 3–5k lines and a couple of months. The renderer, asset pipeline, and editor are years, and they decide whether the engine ships. | Don't write your own RHI. Silk.NET or Veldrid underneath; originality goes into the architecture on top. |
+| **Scope** | The kernel is 3–5k lines and a couple of months. The renderer, asset pipeline, and editor are years, and they decide whether the engine ships. | Don't write your own RHI or physics engine. Silk.NET or Veldrid underneath the renderer, Box3D underneath physics; originality goes into the architecture on top. |
 | **GC pressure from Components** | Every component is a heap object; churn from creating/destroying GameObjects at runtime (bullets, particles, pickups) means allocation and collection, against a 16.6 ms frame budget. | Pool GameObjects and components for anything spawned/destroyed at high frequency. Server GC. `Query<T>()` iterators must not allocate. |
 | **Creeping abstraction** | The temptation to hide `World` behind a "cleaner" interface. Kills performance invisibly and irreversibly. | The rule in §2 is law. Review rejects any service method that takes a `GameObject`. |
 | **Plausible-but-wrong code** — agent-specific | The agent produces code that compiles, passes a smoke test, and breaks on someone else's GPU — sync, barriers, resource lifetime. | Minimize new subsystems; Silk.NET/Veldrid is risk management, not time-saving. A conformance harness gates every plugin merge. |
@@ -424,7 +425,7 @@ cost of changing course is still zero.
 | **M1** | **Window, input, a triangle.** Three separate plugins over Silk.NET. First real-load test of the data channel. | The triangle's color changes by editing system code, with no app restart. |
 | **M2** | **Assets and scenes.** Hot-reloading asset plugin, scene format, `World` serialization. | Swapping a texture on disk changes the picture with nothing stopped; a scene loads and saves. |
 | **M3** | **Editor as plugins.** Shell, reflection-based component inspector, hierarchy, gizmos, Play/Stop on snapshots. | Entering Play takes under 100 ms — the original complaint about Unity is closed. |
-| **M4** | **One small game, end to end.** Physics, audio, a Linux + Windows build pipeline. A 20-minute game, shipped as an executable. | The build runs on both platforms with no editor plugins in the shipped binary. |
+| **M4** | **One small game, end to end.** `engine.physics` over Box3D, audio, a Linux + Windows build pipeline. A 20-minute game, shipped as an executable. | The build runs on both platforms with no editor plugins in the shipped binary. |
 
 ---
 
