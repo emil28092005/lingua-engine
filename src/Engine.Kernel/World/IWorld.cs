@@ -7,6 +7,9 @@ namespace Engine.Kernel.World;
 /// </summary>
 public interface IWorld
 {
+    /// <summary>Top-level GameObjects — everything with no parent.</summary>
+    IReadOnlyList<GameObject> Roots { get; }
+
     GameObject CreateGameObject(string name);
 
     void Destroy(GameObject go);

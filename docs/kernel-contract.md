@@ -56,12 +56,16 @@ nothing.
 | 06 | **Time & Log** | Frame clock, fixed-step accumulator, logging interface. Kept minimal. |
 
 `GameObject.Transform` is the one field embedded directly rather than
-modeled as a `Component` subclass — it's a plain struct (position, rotation,
-scale, cached world matrix), because nearly every system in the engine
+modeled as a `Component` subclass — it's a plain struct holding local
+position, rotation, and scale, because nearly every system in the engine
 touches it every frame, and routing that through the same virtual-dispatch
-path as every other component would tax the one thing everything depends on.
-Everything else — `MeshRenderer`, `Rigidbody`, `AudioSource`, game-specific
-components — is a plain class, heap-allocated, no special treatment.
+path as every other component would tax the one thing everything depends
+on. `GameObject.WorldMatrix` composes it with the parent chain on every
+read rather than caching a value — a cache here would need invalidating on
+every reparent and every ancestor's change, which is more bookkeeping than
+a handful of matrix multiplies costs at indie scale. Everything else —
+`MeshRenderer`, `Rigidbody`, `AudioSource`, game-specific components — is a
+plain class, heap-allocated, no special treatment.
 
 ### Plugins — everything else, no exceptions
 
@@ -219,7 +223,7 @@ public sealed class RenderPlugin : IPlugin
     {
         // type-indexed lookup, not a scan — see the World row in §2
         foreach (var go in world.Query<MeshRenderer>())
-            f.Draw(go.GetComponent<MeshRenderer>().Handle, go.Transform.WorldMatrix);
+            f.Draw(go.GetComponent<MeshRenderer>().Handle, go.WorldMatrix);
     }
 }
 ```
