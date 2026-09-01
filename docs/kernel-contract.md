@@ -15,10 +15,11 @@ plugins alike, will be written by an LLM agent rather than a human.
 
 ## 1. Principle: the kernel is a shared language, not "the engine minus plugins"
 
-The tempting version of "everything is a plugin" makes even the ECS a plugin.
-That's a trap: if every other plugin depends on the ECS plugin, the ECS *is*
-the kernel already — just with an extra layer of indirection and none of the
-stability guarantees a kernel should provide.
+The tempting version of "everything is a plugin" makes even the object model
+a plugin. That's a trap: if every other plugin depends on the
+GameObject/Component plugin, that plugin *is* the kernel already — just with
+an extra layer of indirection and none of the stability guarantees a kernel
+should provide.
 
 **What becomes a plugin is behavior, not the shared data model.**
 
@@ -39,12 +40,20 @@ nothing.
 
 | # | Piece | Role |
 |---|---|---|
-| 01 | **World** | ECS storage: entities, components, queries. Sparse sets on typed arrays, zero `unsafe` — see §7. |
-| 02 | **Scheduler** | Frame stages, topological system ordering, parallelism from access conflicts, and debug-mode enforcement of declared access — see §7. |
+| 01 | **World** | `GameObject` hierarchy (parent/children, name, tags) plus typed `Component` instances, with a type index so `Query<T>()` costs O(matches), not O(all). Plain classes, zero `unsafe` — see §7. |
+| 02 | **Scheduler** | Frame stages, topological system ordering, and debug-mode enforcement of declared component access — see §7. |
 | 03 | **Plugin Host** | Manifest parsing, dependency resolution, ALC loading, unloading, reload. |
 | 04 | **Service Registry** | Publishing and discovering interfaces between plugins. Control path, not the hot path. |
 | 05 | **Event Bus** | Decoupled notifications: entity created, asset reloaded, plugin unloaded. |
 | 06 | **Time & Log** | Frame clock, fixed-step accumulator, logging interface. Kept minimal. |
+
+`GameObject.Transform` is the one field embedded directly rather than
+modeled as a `Component` subclass — it's a plain struct (position, rotation,
+scale, cached world matrix), because nearly every system in the engine
+touches it every frame, and routing that through the same virtual-dispatch
+path as every other component would tax the one thing everything depends on.
+Everything else — `MeshRenderer`, `Rigidbody`, `AudioSource`, game-specific
+components — is a plain class, heap-allocated, no special treatment.
 
 ### Plugins — everything else, no exceptions
 
@@ -65,16 +74,22 @@ deliberately different prices:
 
 | Channel | For | Cost | Frequency |
 |---|---|---|---|
-| **World** (ECS components) | Anything per-entity: transforms, meshes, colliders, health. Render reads what physics wrote without knowing physics exists. | Direct memory access, zero allocation, zero dispatch | 10⁴–10⁶ / frame |
+| **World** (GameObjects & Components) | Anything per-entity: transforms, meshes, colliders, health. Render reads what physics wrote without knowing physics exists. | Direct field access on a cached component reference; `Query<T>()` is a type-index lookup, not a scan | 10⁴–10⁶ / frame |
 | **Services** (interfaces) | Commands and resources: load an asset, open a window, compile a shader, open an editor panel. | Virtual call, negligible | a handful / scene |
 | **Events** (bus) | Facts with no fixed consumer at design time: asset reloaded, plugin unloaded, entity destroyed. | Allocation + fan-out to subscribers | tens / frame |
 
 > **The line that must never be crossed.** Never write
 > `IPhysicsService.GetPosition(entity)`. A single call is cheap, but that
 > shape of API invites calling it in a loop over entities — and now the
-> plugin boundary sits in the hot path. Position is a component in `World`,
+> plugin boundary sits in the hot path. Position is on `GameObject.Transform`,
 > not a service method. Services hand out *capabilities*; `World` hands out
 > *data*.
+>
+> The same rule applies one level down, inside `World` itself: don't call
+> `otherGameObject.GetComponent<T>()` for a different entity from inside a
+> per-entity loop — that's a type-indexed lookup multiplied by iteration
+> count, the exact perf trap Unity code is famous for. Resolve the
+> components you need once, before the loop starts, and index into that.
 
 ## 3. The plugin contract
 
@@ -94,7 +109,7 @@ public interface IPlugin
     void Configure(IPluginContext ctx);
 
     // Full undo of Configure. Whether this method is honest
-    // determines whether the ALC unloads at all — see §5.
+    // determines whether the ALC unloads at all — see §4.
     void Shutdown(IPluginContext ctx);
 }
 
@@ -124,6 +139,17 @@ public interface IPluginContext
 ```
 
 ```csharp
+// plugins/engine.render/Contracts/MeshRenderer.cs
+
+// Plain data, no methods. Lives in the Contracts assembly — see §4
+// for why that split is what makes reload safe.
+public sealed class MeshRenderer : Component
+{
+    public MeshHandle Handle;
+}
+```
+
+```csharp
 // plugins/engine.render/RenderPlugin.cs
 
 public sealed class RenderPlugin : IPlugin
@@ -134,13 +160,13 @@ public sealed class RenderPlugin : IPlugin
         var window = ctx.Services.Require<IWindow>();
         ctx.Services.Provide<IRenderer>(new VulkanRenderer(window));
 
-        // data plane: the system reads components directly.
-        // Reads/Writes are declared explicitly — the scheduler
-        // builds a conflict graph from them and parallelizes the
-        // frame, and in debug builds enforces the declaration.
+        // data plane: the system queries GameObjects by component type.
+        // Reads/Writes are declared explicitly, and in debug builds
+        // the scheduler enforces that the system only touches what
+        // it declared — see §7.
         ctx.Schedule.Add(Stage.Render, SubmitDrawCalls)
            .After("engine.transform:propagate")
-           .Reads<Transform, MeshRenderer>();
+           .Reads<MeshRenderer>();
     }
 
     public void Shutdown(IPluginContext ctx)
@@ -150,10 +176,11 @@ public sealed class RenderPlugin : IPlugin
         ctx.Schedule.RemoveAllFrom("engine.render");
     }
 
-    static void SubmitDrawCalls(in Frame f, Query<Transform, MeshRenderer> q)
+    static void SubmitDrawCalls(in Frame f, IWorld world)
     {
-        foreach (var (xf, mesh) in q)   // ref access, no boxing
-            f.Draw(mesh.Handle, xf.Matrix);
+        // type-indexed lookup, not a scan — see the World row in §2
+        foreach (var go in world.Query<MeshRenderer>())
+            f.Draw(go.GetComponent<MeshRenderer>().Handle, go.Transform.WorldMatrix);
     }
 }
 ```
@@ -166,24 +193,26 @@ its contents. One forgotten event subscription, one live `Task`, one cached
 memory on every reload.
 
 The most treacherous reference isn't a subscription — it's the **component
-structs themselves**. If a plugin declares `struct Transform` and `World`
-stores a `Transform[]`, the kernel holds a reference to a type from the
-context you're trying to unload. That plugin will never unload.
+classes themselves**. If a plugin declares `class MeshRenderer : Component`
+and a `GameObject` holds one in its component list, the kernel holds a
+reference to a type from the context you're trying to unload. That plugin
+will never unload.
 
 This is why every plugin splits into two assemblies:
 
-- **Contracts** (`*.Contracts.dll`) — component structs, service
+- **Contracts** (`*.Contracts.dll`) — component classes, service
   interfaces. Loaded into the **Default ALC**, which lives for the process
   lifetime and never unloads. `World` owning references into it is fine,
   because it isn't supposed to unload.
 - **Implementation** (`*.dll`) — systems, service implementations. Loaded
-  into a **collectible ALC**, recreated on every reload. No `static` state,
-  no data — only code.
+  into a **collectible ALC**, recreated on every reload. No `static` state —
+  only code that operates on objects it doesn't own.
 
 References only point from implementation to contracts, never the reverse,
-which is what lets `Unload()` actually succeed. In practice, ~95% of
-iteration is logic changes: instant reload. Changing a component's fields is
-rare and requires an editor restart.
+which is what lets `Unload()` actually succeed. Because component *instances*
+live in `World`, owned by the kernel, an implementation-only reload never
+touches game data at all — it isn't snapshotted and restored, it's simply
+never in the collectible ALC to begin with.
 
 ### Reload sequence
 
@@ -194,19 +223,27 @@ rare and requires an editor restart.
    mid-stage.
 3. `Shutdown()` runs: systems, services, subscriptions, and native resources
    are torn down. Anything `Configure` registered has to be undone here, or
-   step 5 fails.
-4. A snapshot of this plugin's component data is taken — only if contracts
-   were also rebuilt. Component arrays are copied along with a field
-   descriptor.
-5. `alc.Unload()` + `GC.Collect()`, then a `WeakReference` check. If the
+   step 4 fails. `World`'s component instances aren't touched — the
+   implementation assembly never held them.
+4. `alc.Unload()` + `GC.Collect()`, then a `WeakReference` check. If the
    context doesn't collect, that's a loud error naming the pinning reference
    — not a silent leak.
-6. A new ALC, the new assembly loads, `Configure()` runs. The plugin doesn't
+5. A new ALC, the new assembly loads, `Configure()` runs. The plugin doesn't
    know it was reloaded.
-7. Data is restored: old and new field layouts are matched by name. Matches
-   are copied, new fields get default values, removed fields are dropped.
-8. The scheduler rebuilds its ordering graph and resumes. Typical budget:
+6. The scheduler rebuilds its ordering graph and resumes. Typical budget:
    200–400 ms, almost all of it spent waiting on the build.
+
+In practice this covers ~95% of iteration, because most changes are to
+system logic, not component shape.
+
+> **Changing a component's own fields is a different, rarer case — and it
+> doesn't hot-reload at all.** A component's fields live in the Contracts
+> assembly, and the Default ALC hosting it never unloads by design. There is
+> no in-process path to swap it. This isn't a gap to fill later; it's a
+> deliberate seam. Field changes are rare enough that paying for an editor
+> restart there — reloading the scene from its serialized file rather than
+> migrating live objects — is a better trade than writing and maintaining
+> live-migration code for the 95% case that doesn't need it.
 
 > **Leak testing belongs in CI from day one.** Load and unload a test plugin
 > 200 times in a row; after each cycle, verify the ALC's `WeakReference` is
@@ -226,10 +263,10 @@ Play.
 ```csharp
 // Engine.Editor / PlayMode.cs
 
-// Entering Play is a memory copy, not a runtime rebuild.
+// Entering Play clones the object graph; it doesn't rebuild the runtime.
 void EnterPlay()
 {
-    _snapshot = world.Snapshot();   // array copy, low single-digit ms
+    _snapshot = world.Snapshot();   // deep-clone GameObjects + Components
     schedule.SetGroup(SystemGroup.Play);
 }
 
@@ -239,6 +276,13 @@ void ExitPlay()
     schedule.SetGroup(SystemGroup.Edit);
 }
 ```
+
+A field-by-field object clone is slower than the raw array copy a
+struct-of-arrays `World` would give you — cloning thousands of `GameObject`s
+and their components is real allocation work, not a memcpy. For scenes at
+indie scale it's still low-single-digit milliseconds, and it's an
+order of magnitude cheaper than what Unity's domain reload does, and it only
+happens once per Play/Stop, not every frame.
 
 Play becomes a system-group switch, not a world rebuild. A side effect of
 the same decision: system code can be edited *during* Play without
@@ -251,16 +295,16 @@ exists to enable.
 |---|---|---|
 | **ALC leaks** — the main killer | Unload silently fails from one forgotten reference. Symptom: memory growth after N reloads; cause takes days to find. | 200-cycle test in CI. Diagnose pinning references in the host itself, not via an external profiler. |
 | **Scope** | The kernel is 3–5k lines and a couple of months. The renderer, asset pipeline, and editor are years, and they decide whether the engine ships. | Don't write your own RHI. Silk.NET or Veldrid underneath; originality goes into the architecture on top. |
-| **GC in the hot path** | Collector pauses against a 16.6 ms frame budget. The managed-runtime tradeoff is accepted, but it demands discipline. | `unmanaged` structs for components, `Span<T>` in systems, allocation only at load time. Server GC. |
+| **GC pressure from Components** | Every component is a heap object; churn from creating/destroying GameObjects at runtime (bullets, particles, pickups) means allocation and collection, against a 16.6 ms frame budget. | Pool GameObjects and components for anything spawned/destroyed at high frequency. Server GC. `Query<T>()` iterators must not allocate. |
 | **Creeping abstraction** | The temptation to hide `World` behind a "cleaner" interface. Kills performance invisibly and irreversibly. | The rule in §2 is law. Review rejects any service method that takes an `Entity`. |
 | **Plausible-but-wrong code** — agent-specific | The agent produces code that compiles, passes a smoke test, and breaks on someone else's GPU — sync, barriers, resource lifetime. | Minimize new subsystems; Silk.NET/Veldrid is risk management, not time-saving. A conformance harness gates every plugin merge. |
 | **Contract drift** | A contract change requires updating every dependent plugin, and a stale implementation keeps compiling while silently diverging from spec. | Versions in the manifest, plus running *every* plugin's harness on every build, not just the changed one. |
 
 ## 7. Written by an agent, not a human
 
-This isn't an afterthought — it's an input condition. It's why §2's storage
-is simpler than a "fast" ECS would normally be, and it adds a surface no
-classic editor needs at all.
+This isn't an afterthought — it's an input condition. It's part of why §2
+picked the most conventional possible object model instead of a
+performance-first one, and it adds a surface no classic editor needs at all.
 
 **What works in our favor:**
 
@@ -272,15 +316,16 @@ classic editor needs at all.
   inevitable; the question is what it can break. The kernel is written once,
   tested, and **frozen** — the agent never touches it again after that. A bug
   in a plugin stays a bug in that plugin.
+- *GameObject/Component is the most over-represented pattern in an LLM's
+  training data of any game architecture.* That's also a reason it won over
+  a hand-rolled ECS: components are plain classes with plain fields, no
+  stride arithmetic, no manual layout, nothing that compiles cleanly and
+  corrupts memory at runtime. The one performance-motivated exception,
+  `Transform` as an inline struct, is confined to the kernel and never
+  written by the agent at all.
 
 **What has to change:**
 
-- *No `unsafe` in the v1 hot path.* Stride arithmetic, alignment, a pointer
-  that outlives a GC-triggering call — exactly the code an LLM writes
-  convincingly and wrong, failing as nondeterministic memory corruption.
-  Hence sparse sets on `T[]` instead of archetype chunks; chunked layout
-  stays an optimization behind the same query API for whenever a profile
-  actually calls for it.
 - *Explicit over clever.* Naming conventions, code generators, reflection
   magic save a human keystrokes but hide behavior from something that
   reasons over text. Verbose, explicit system and service registration is a
@@ -332,7 +377,7 @@ cost of changing course is still zero.
 
 | | Milestone | Done when |
 |---|---|---|
-| **M0** | **Kernel only.** `World` on sparse sets, staged scheduler with access enforcement, plugin host with ALC, service registry, JSON world dump. No window, no graphics. | An agent runs the full loop from §7 unassisted: edits a headless plugin, rebuilds, reads the changed dump — and the 200-cycle leak test is green. |
+| **M0** | **Kernel only.** `World` as a `GameObject`/`Component` hierarchy with type-indexed queries, staged scheduler with access enforcement, plugin host with ALC, service registry, JSON world dump. No window, no graphics. | An agent runs the full loop from §7 unassisted: edits a headless plugin, rebuilds, reads the changed dump — and the 200-cycle leak test is green. |
 | **M1** | **Window, input, a triangle.** Three separate plugins over Silk.NET. First real-load test of the data channel. | The triangle's color changes by editing system code, with no app restart. |
 | **M2** | **Assets and scenes.** Hot-reloading asset plugin, scene format, `World` serialization. | Swapping a texture on disk changes the picture with nothing stopped; a scene loads and saves. |
 | **M3** | **Editor as plugins.** Shell, reflection-based component inspector, hierarchy, gizmos, Play/Stop on snapshots. | Entering Play takes under 100 ms — the original complaint about Unity is closed. |
@@ -343,6 +388,7 @@ cost of changing course is still zero.
 Open questions to resolve before M0: whether `Time` and `Log` belong in the
 kernel or as plugins; whether the Event Bus is needed at launch or whether
 event-components in `World` cover its role; whether the set of frame stages
-is fixed or plugin-extensible; and at what profiling point (if ever) to move
-from sparse sets to archetype chunks. Assembly names in the examples are
-placeholders.
+is fixed or plugin-extensible; and whether a data-oriented fast path (for
+bulk operations like particles) is worth introducing later without
+abandoning GameObject/Component for everything else. Assembly names in the
+examples are placeholders.
