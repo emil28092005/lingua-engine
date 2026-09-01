@@ -8,8 +8,16 @@ plugins alike, will be written by an LLM agent rather than a human.
 - **Stack** — .NET 9, C# 13
 - **Platforms** — Linux, Windows
 - **Kernel** — BCL only, no dependencies
+- **Object model** — `GameObject` / `Component`
 - **Primary author** — an agent
 - **Goal** — Play-in-editor with no domain reload
+
+Built for a small team's own use, at indie scale — not AAA. That scope
+licenses several calls made below: accepting GC pauses instead of chasing a
+zero-allocation hot path, picking `GameObject`/`Component` over a faster
+struct-of-arrays ECS, buying rendering and windowing off the shelf instead of
+writing them. None of those are free choices at a bigger scale; at this one,
+dev velocity outweighs the performance left on the table.
 
 ---
 
@@ -41,10 +49,10 @@ nothing.
 | # | Piece | Role |
 |---|---|---|
 | 01 | **World** | `GameObject` hierarchy (parent/children, name, tags) plus typed `Component` instances, with a type index so `Query<T>()` costs O(matches), not O(all). Plain classes, zero `unsafe` — see §7. |
-| 02 | **Scheduler** | Frame stages, topological system ordering, and debug-mode enforcement of declared component access — see §7. |
+| 02 | **Scheduler** | Frame stages, topological system ordering, parallel execution of systems with disjoint declared access, and debug-mode enforcement of that access — see §7. Structural changes (adding/removing a `GameObject` or `Component`) are queued and applied at the stage boundary, so a running system never sees a collection mutate under it. |
 | 03 | **Plugin Host** | Manifest parsing, dependency resolution, ALC loading, unloading, reload. |
 | 04 | **Service Registry** | Publishing and discovering interfaces between plugins. Control path, not the hot path. |
-| 05 | **Event Bus** | Decoupled notifications: entity created, asset reloaded, plugin unloaded. |
+| 05 | **Event Bus** | Decoupled notifications: `GameObject` created, asset reloaded, plugin unloaded. |
 | 06 | **Time & Log** | Frame clock, fixed-step accumulator, logging interface. Kept minimal. |
 
 `GameObject.Transform` is the one field embedded directly rather than
@@ -67,6 +75,36 @@ architecture's real test: if the editor can't be assembled as plugins, the
 extensibility claim is decorative. A game build is the same kernel minus the
 editor plugins.
 
+### Per-project configuration
+
+A plugin's manifest declares what it needs; a **project's** manifest
+declares which plugins it loads, at which versions, and where to find its
+own. This is the piece that actually makes modularity a per-project
+property rather than a claim about the engine in the abstract — a new
+project doesn't fork the engine to swap an implementation, it points its
+manifest at a different plugin satisfying the same contracts, or adds
+project-local plugins that never leave its own tree.
+
+```json
+// MyGame/project.json
+{
+  "engineVersion": "^0.3",
+  "plugins": [
+    { "id": "engine.windowing" },
+    { "id": "engine.render",  "version": "^0.3" },
+    { "id": "engine.physics", "version": "^0.2" },
+    { "id": "mygame.enemies" }
+  ],
+  "pluginPaths": ["./plugins"]
+}
+```
+
+`engine.render` here could just as well point at a project-local fork with
+the same `contracts` and a bumped `id` — the Plugin Host resolves a
+project's manifest through the exact same dependency graph it already
+builds for plugin-to-plugin `dependsOn`, so nothing new has to be built to
+support it.
+
 ### Two channels, two costs
 
 Plugins talk to the kernel — and to each other — through two paths with
@@ -79,7 +117,7 @@ deliberately different prices:
 | **Events** (bus) | Facts with no fixed consumer at design time: asset reloaded, plugin unloaded, entity destroyed. | Allocation + fan-out to subscribers | tens / frame |
 
 > **The line that must never be crossed.** Never write
-> `IPhysicsService.GetPosition(entity)`. A single call is cheap, but that
+> `IPhysicsService.GetPosition(GameObject go)`. A single call is cheap, but that
 > shape of API invites calling it in a loop over entities — and now the
 > plugin boundary sits in the hot path. Position is on `GameObject.Transform`,
 > not a service method. Services hand out *capabilities*; `World` hands out
@@ -161,8 +199,9 @@ public sealed class RenderPlugin : IPlugin
         ctx.Services.Provide<IRenderer>(new VulkanRenderer(window));
 
         // data plane: the system queries GameObjects by component type.
-        // Reads/Writes are declared explicitly, and in debug builds
-        // the scheduler enforces that the system only touches what
+        // Reads/Writes are declared explicitly — the scheduler uses
+        // them to run systems with disjoint access in parallel, and
+        // in debug builds enforces that a system only touches what
         // it declared — see §7.
         ctx.Schedule.Add(Stage.Render, SubmitDrawCalls)
            .After("engine.transform:propagate")
@@ -296,7 +335,7 @@ exists to enable.
 | **ALC leaks** — the main killer | Unload silently fails from one forgotten reference. Symptom: memory growth after N reloads; cause takes days to find. | 200-cycle test in CI. Diagnose pinning references in the host itself, not via an external profiler. |
 | **Scope** | The kernel is 3–5k lines and a couple of months. The renderer, asset pipeline, and editor are years, and they decide whether the engine ships. | Don't write your own RHI. Silk.NET or Veldrid underneath; originality goes into the architecture on top. |
 | **GC pressure from Components** | Every component is a heap object; churn from creating/destroying GameObjects at runtime (bullets, particles, pickups) means allocation and collection, against a 16.6 ms frame budget. | Pool GameObjects and components for anything spawned/destroyed at high frequency. Server GC. `Query<T>()` iterators must not allocate. |
-| **Creeping abstraction** | The temptation to hide `World` behind a "cleaner" interface. Kills performance invisibly and irreversibly. | The rule in §2 is law. Review rejects any service method that takes an `Entity`. |
+| **Creeping abstraction** | The temptation to hide `World` behind a "cleaner" interface. Kills performance invisibly and irreversibly. | The rule in §2 is law. Review rejects any service method that takes a `GameObject`. |
 | **Plausible-but-wrong code** — agent-specific | The agent produces code that compiles, passes a smoke test, and breaks on someone else's GPU — sync, barriers, resource lifetime. | Minimize new subsystems; Silk.NET/Veldrid is risk management, not time-saving. A conformance harness gates every plugin merge. |
 | **Contract drift** | A contract change requires updating every dependent plugin, and a stale implementation keeps compiling while silently diverging from spec. | Versions in the manifest, plus running *every* plugin's harness on every build, not just the changed one. |
 
