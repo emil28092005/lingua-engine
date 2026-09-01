@@ -1,0 +1,8 @@
+{
+  "id":        "sandbox.echo",
+  "version":   "0.0.1",
+  "contracts": "Sandbox.Echo.Contracts.dll",
+  "assembly":  "Sandbox.Echo.dll",
+  "dependsOn": {},
+  "reloadable": true
+}

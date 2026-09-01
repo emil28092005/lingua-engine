@@ -1,0 +1,16 @@
+<Project>
+
+  <!-- Shared by every project in the solution. Project-specific settings
+       (OutputType, IsPackable, etc.) stay in each .csproj. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>13.0</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <!-- docs/kernel-contract.md §7: no unsafe in the v1 hot path. Enforced
+         by the build, not just by convention, everywhere in the solution. -->
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>
