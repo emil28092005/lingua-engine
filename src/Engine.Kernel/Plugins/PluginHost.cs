@@ -12,14 +12,15 @@ namespace Engine.Kernel.Plugins;
 /// Loads, unloads, and (eventually) reloads plugins. See
 /// docs/kernel-contract.md §3-§4.
 ///
-/// Scope of this pass: single-plugin load/unload with the correct two-ALC
-/// split, and enough bookkeeping that a plugin's Shutdown() can be honest.
-/// NOT yet built: resolving a project's or a plugin's <c>dependsOn</c> graph
-/// to determine load order across multiple plugins — that needs at least
-/// two real interdependent plugins to test against meaningfully, and we
-/// only have one (sandbox.echo, deliberately dependency-free). Loading a
-/// plugin whose dependencies aren't already loaded will fail wherever the
-/// plugin's own code first touches them, not with a host-level error.
+/// NOT yet built: resolving a plugin's own <c>dependsOn</c> graph to
+/// determine load order — that needs at least two real interdependent
+/// plugins to test against meaningfully, and we only have one (sandbox.echo,
+/// deliberately dependency-free). <see cref="LoadProject"/> loads a
+/// project's plugins in the order its manifest lists them and does not
+/// check <c>PluginReference.Version</c> either; loading a plugin whose
+/// dependencies aren't already loaded (or aren't the version expected)
+/// will fail wherever its own code first touches them, not with a
+/// host-level error.
 /// </summary>
 public sealed class PluginHost(IWorld world, IServiceRegistry services, Schedule schedule, IEventBus events)
 {
@@ -62,6 +63,38 @@ public sealed class PluginHost(IWorld world, IServiceRegistry services, Schedule
     }
 
     /// <summary>
+    /// Loads every plugin a project's manifest lists, in listed order.
+    /// Each plugin id is resolved to a directory by checking, in order,
+    /// every path in <paramref name="engineSearchPaths"/> (the engine's own
+    /// plugin catalog) and then the project's own <c>pluginPaths</c>
+    /// (resolved relative to <paramref name="projectManifestPath"/>'s
+    /// directory) for a <c>&lt;searchPath&gt;/&lt;id&gt;/plugin.json</c>.
+    /// Returns the loaded ids, same order as the manifest.
+    /// </summary>
+    public IReadOnlyList<string> LoadProject(string projectManifestPath, IReadOnlyList<string> engineSearchPaths)
+    {
+        var project = ReadProjectManifest(projectManifestPath);
+        var projectDirectory = Path.GetDirectoryName(Path.GetFullPath(projectManifestPath))!;
+
+        var searchPaths = engineSearchPaths
+            .Concat(project.PluginPaths.Select(p => Path.Combine(projectDirectory, p)))
+            .ToList();
+
+        var loadedIds = new List<string>(project.Plugins.Count);
+
+        foreach (var reference in project.Plugins)
+        {
+            var directory = ResolvePluginDirectory(reference.Id, searchPaths)
+                ?? throw new InvalidOperationException(
+                    $"Could not find plugin '{reference.Id}' under any of: {string.Join(", ", searchPaths)}.");
+
+            loadedIds.Add(Load(directory));
+        }
+
+        return loadedIds;
+    }
+
+    /// <summary>
     /// Runs Shutdown(), then unloads the plugin's ALC. Returns a weak
     /// reference to the ALC so a caller can verify it actually collected —
     /// see the leak test this exists for in
@@ -90,6 +123,28 @@ public sealed class PluginHost(IWorld world, IServiceRegistry services, Schedule
         var json = File.ReadAllText(path);
         return JsonSerializer.Deserialize<PluginManifest>(json, ManifestOptions)
             ?? throw new InvalidOperationException($"'{path}' did not deserialize to a plugin manifest.");
+    }
+
+    private static ProjectManifest ReadProjectManifest(string path)
+    {
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"No project manifest found at '{path}'.", path);
+
+        var json = File.ReadAllText(path);
+        return JsonSerializer.Deserialize<ProjectManifest>(json, ManifestOptions)
+            ?? throw new InvalidOperationException($"'{path}' did not deserialize to a project manifest.");
+    }
+
+    private static string? ResolvePluginDirectory(string pluginId, IReadOnlyList<string> searchPaths)
+    {
+        foreach (var searchPath in searchPaths)
+        {
+            var candidate = Path.Combine(searchPath, pluginId);
+            if (File.Exists(Path.Combine(candidate, "plugin.json")))
+                return candidate;
+        }
+
+        return null;
     }
 
     private static void LoadContractsIntoDefaultAlc(string pluginDirectory, PluginManifest manifest)

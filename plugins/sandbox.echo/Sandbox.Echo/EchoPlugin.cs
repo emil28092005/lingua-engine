@@ -18,6 +18,12 @@ public sealed class EchoPlugin : IPlugin
         ctx.Schedule.Add(Stage.Update, Tick)
            .Writes<Ping>();
 
+        // There's no scene format yet (that's M2) — nothing else will ever
+        // put a GameObject in front of `engine run --headless`, so this
+        // deliberately-a-test-fixture plugin seeds its own. A real plugin
+        // wouldn't do this; scene content isn't a subsystem's job.
+        ctx.World.CreateGameObject("sandbox.echo:ping").AddComponent<Ping>();
+
         ctx.Log.Info("sandbox.echo configured");
     }
 

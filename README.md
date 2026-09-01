@@ -27,11 +27,18 @@ introspection surface no classic editor bothers with — see
 
 ## Status
 
-Pre-implementation. The current design is written up in
-[`docs/kernel-contract.md`](docs/kernel-contract.md): what belongs in the
-kernel, the plugin contract, the hot-reload model, and the build order
-(M0–M4). Nothing has shipped yet — this document is the thing to argue with
-before code gets written.
+**M0 done.** The kernel — `World` (`GameObject`/`Component`, type-indexed
+queries), `Schedule` (stage execution, conflict batching, debug-mode access
+enforcement), `PluginHost` (two-ALC load/unload, verified leak-free over
+200 cycles), and a headless CLI (`engine run --headless ... --dump`) — all
+exist and are tested. The full agent loop from
+[`docs/kernel-contract.md#7`](docs/kernel-contract.md#7-written-by-an-agent-not-a-human)
+runs end to end. No window, no rendering, no physics yet — see the build
+order (M0–M4) in [`docs/kernel-contract.md`](docs/kernel-contract.md) for
+what's next.
+
+Design and implementation are argued over in the same place: the doc is
+still the thing to disagree with before code changes to match.
 
 ## License
 
