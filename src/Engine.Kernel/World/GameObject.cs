@@ -1,4 +1,5 @@
 using System.Numerics;
+using Engine.Kernel.Scheduling;
 
 namespace Engine.Kernel.World;
 
@@ -77,6 +78,8 @@ public sealed class GameObject
 
     public T? GetComponent<T>() where T : Component
     {
+        SystemAccessScope.CheckRead(typeof(T));
+
         foreach (var component in _components)
         {
             if (component is T match)
@@ -86,8 +89,19 @@ public sealed class GameObject
         return null;
     }
 
+    /// <summary>
+    /// Adding a component requires <c>Writes&lt;T&gt;()</c> — checked here,
+    /// at the structural change. What isn't and can't be checked: mutating
+    /// a component's own fields after the fact, e.g.
+    /// <c>go.GetComponent&lt;T&gt;()!.Value = 5</c>. That's a plain field
+    /// write on a plain object, with nothing to intercept it — see
+    /// docs/kernel-contract.md §7's note on why components stay plain
+    /// classes rather than something that could enforce this fully.
+    /// </summary>
     public T AddComponent<T>() where T : Component, new()
     {
+        SystemAccessScope.CheckWrite(typeof(T));
+
         var component = new T();
         _components.Add(component);
         Owner?.IndexComponentAdded(this, component);
@@ -96,6 +110,8 @@ public sealed class GameObject
 
     public void RemoveComponent<T>() where T : Component
     {
+        SystemAccessScope.CheckWrite(typeof(T));
+
         for (var i = 0; i < _components.Count; i++)
         {
             if (_components[i] is not T match)

@@ -18,6 +18,14 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Engine.Kernel\Engine.Kernel.csproj" />
 
+    <!-- Normal reference, on purpose: Contracts assemblies are designed to
+         be shared safely — a Ping component constructed here and one
+         constructed inside the dynamically-loaded plugin are the exact
+         same runtime type, precisely because PluginHost's "already in
+         Default ALC?" check (see PluginLoadContext) finds this copy and
+         defers to it instead of loading a second one. -->
+    <ProjectReference Include="..\..\plugins\sandbox.echo\Sandbox.Echo.Contracts\Sandbox.Echo.Contracts.csproj" />
+
     <!-- Build-order only: the harness must load this plugin the same way
          PluginHost does at runtime, into its own collectible ALC by file
          path. A normal ProjectReference would link its types straight into

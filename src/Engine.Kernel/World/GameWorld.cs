@@ -1,3 +1,5 @@
+using Engine.Kernel.Scheduling;
+
 namespace Engine.Kernel.World;
 
 /// <summary>
@@ -56,8 +58,11 @@ public sealed class GameWorld : IWorld
     /// expected to queue structural changes to a stage boundary rather than
     /// let a running system trigger this — see the Scheduler row in §2.
     /// </summary>
-    public IEnumerable<GameObject> Query<T>() where T : Component =>
-        _index.TryGetValue(typeof(T), out var set) ? set : [];
+    public IEnumerable<GameObject> Query<T>() where T : Component
+    {
+        SystemAccessScope.CheckRead(typeof(T));
+        return _index.TryGetValue(typeof(T), out var set) ? set : [];
+    }
 
     internal void IndexComponentAdded(GameObject go, Component component)
     {

@@ -6,9 +6,10 @@ using Sandbox.Echo.Contracts;
 namespace Sandbox.Echo;
 
 /// <summary>
-/// M0's test fixture. Exists only to exercise the reload loop end to end —
-/// edit, rebuild, ALC reload, headless run, dump — before any real
-/// subsystem exists to test it against. See M0 in docs/kernel-contract.md §8.
+/// M0's test fixture. Exists to exercise the full loop end to end — plugin
+/// load, a real cross-ALC system registered and invoked by Schedule, and
+/// hot reload — before any real subsystem exists to test any of it
+/// against. See M0 in docs/kernel-contract.md §8.
 /// </summary>
 public sealed class EchoPlugin : IPlugin
 {
@@ -27,7 +28,7 @@ public sealed class EchoPlugin : IPlugin
 
     static void Tick(IWorld world)
     {
-        // TODO(M0): bump every Ping.Count by one. Placeholder until the
-        // Scheduler actually exists to invoke this.
+        foreach (var go in world.Query<Ping>())
+            go.GetComponent<Ping>()!.Count++;
     }
 }
