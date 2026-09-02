@@ -109,6 +109,16 @@ public sealed class GameWorld : IWorld
             _roots.Add(go);
     }
 
+    public string Snapshot() => SceneFormat.ToJson(this);
+
+    public void Restore(string snapshot)
+    {
+        foreach (var root in Roots.ToArray())
+            Destroy(root);
+
+        SceneFormat.FromJson(this, snapshot);
+    }
+
     /// <summary>Unconditional removal from every type bucket, used by
     /// Destroy — cheaper to reason about than replaying per-component
     /// removals through IndexComponentRemoved's "still has one left?"
