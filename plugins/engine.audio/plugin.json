@@ -1,0 +1,8 @@
+{
+  "id":        "engine.audio",
+  "version":   "0.1.0",
+  "contracts": "Engine.Audio.Contracts.dll",
+  "assembly":  "Engine.Audio.dll",
+  "dependsOn": {},
+  "reloadable": true
+}

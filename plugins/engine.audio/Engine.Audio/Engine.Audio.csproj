@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Same reasoning as engine.physics' own native Content item: default
+         DllImport probing already checks the calling assembly's directory,
+         so this is copied straight alongside Engine.Audio.dll rather than
+         through a runtimes/<rid>/native/ path. -->
+    <Content Include="native/liblingua_audio.so">
+      <Link>liblingua_audio.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Engine.Kernel\Engine.Kernel.csproj" />
+    <ProjectReference Include="..\Engine.Audio.Contracts\Engine.Audio.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
