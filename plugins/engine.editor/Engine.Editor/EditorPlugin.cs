@@ -19,14 +19,15 @@ namespace Engine.Editor;
 /// split exists at all.
 ///
 /// Nothing here reads or writes a Component through GetComponent/Query —
-/// the Hierarchy and Inspector panels (not built yet) will walk
-/// IWorld.Roots and GameObject.Components directly instead, which is why
-/// this plugin never needs to declare Reads/Writes on its system: those
-/// checks only guard the typed accessors, not plain property reads. See
-/// GameObject.AddComponent's own doc comment on the same gap.
+/// HierarchyPanel walks IWorld.Roots/GameObject.Children directly, and the
+/// not-yet-built Inspector will walk GameObject.Components the same way —
+/// which is why this plugin never needs to declare Reads/Writes on its
+/// system: those checks only guard the typed accessors, not plain property
+/// reads. See GameObject.AddComponent's own doc comment on the same gap.
 /// </summary>
 public sealed class EditorPlugin : IPlugin
 {
+    private readonly EditorState _state = new();
     private GL? _gl;
     private ImGuiController? _controller;
     private ITime? _time;
@@ -63,6 +64,8 @@ public sealed class EditorPlugin : IPlugin
         ImGui.Text($"FPS: {1f / MathF.Max(_time.DeltaTime, 0.0001f):F0}");
         ImGui.Text($"Frame: {_time.FrameCount}");
         ImGui.End();
+
+        HierarchyPanel.Draw(world, _state);
 
         _controller.Render();
     }
