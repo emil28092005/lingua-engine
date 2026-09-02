@@ -4,7 +4,8 @@
     { "id": "engine.windowing" },
     { "id": "engine.assets" },
     { "id": "engine.render" },
-    { "id": "engine.input" }
+    { "id": "engine.input" },
+    { "id": "engine.editor" }
   ],
   "pluginPaths": []
 }

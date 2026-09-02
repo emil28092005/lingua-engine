@@ -12,4 +12,12 @@ namespace Engine.Input.Contracts;
 public interface IEngineInput
 {
     bool IsKeyDown(Key key);
+
+    /// <summary>
+    /// The raw Silk.NET input context, same escape hatch as
+    /// IEngineWindow.Native — needed here specifically so engine.editor can
+    /// construct Silk.NET.OpenGL.Extensions.ImGui's ImGuiController, which
+    /// takes an IInputContext directly rather than anything of ours.
+    /// </summary>
+    IInputContext Native { get; }
 }

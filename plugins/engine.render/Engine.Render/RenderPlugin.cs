@@ -160,6 +160,7 @@ public sealed class RenderPlugin : IPlugin
 
         ctx.Services.Provide<IScreenCapture>(new GlScreenCapture(_gl, _window));
         ctx.Schedule.Add(Stage.Render, Draw).Reads<QuadRenderer>();
+        ctx.Schedule.Add(Stage.Present, Present);
         ctx.Log.Info("GL context created, 3D quad pipeline ready");
     }
 
@@ -236,9 +237,13 @@ public sealed class RenderPlugin : IPlugin
             SetMatrix(_modelLocation, go.WorldMatrix);
             _gl.DrawArrays(PrimitiveType.Triangles, 0, 6);
         }
-
-        _window!.Native.GLContext!.SwapBuffers();
     }
+
+    // Split from Draw() into its own Stage.Present system so engine.editor
+    // can draw ImGui on top of the scene from a Stage.Render system of its
+    // own (registered after this plugin's, per project.json order) without
+    // racing the swap — see Stage.Present's doc comment.
+    private void Present(IWorld world) => _window!.Native.GLContext!.SwapBuffers();
 
     private unsafe void SetMatrix(int location, Matrix4x4 matrix) =>
         _gl!.UniformMatrix4(location, 1, true, (float*)&matrix);

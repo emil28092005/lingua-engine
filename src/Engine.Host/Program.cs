@@ -244,6 +244,7 @@ if (windowed)
 
         schedule.RunStage(Stage.Update, world);
         schedule.RunStage(Stage.Render, world);
+        schedule.RunStage(Stage.Present, world);
 
         foreach (var path in pendingScreenshots)
         {

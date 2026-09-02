@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Generates the deps.json AssemblyDependencyResolver needs to find
+         this plugin's NuGet dependencies — see PluginLoadContext in
+         Engine.Kernel, and the same property on the other render-facing
+         plugins. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.OpenGL.Extensions.ImGui" Version="2.23.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Engine.Kernel\Engine.Kernel.csproj" />
+    <ProjectReference Include="..\Engine.Editor.Contracts\Engine.Editor.Contracts.csproj" />
+    <ProjectReference Include="..\..\engine.windowing\Engine.Windowing.Contracts\Engine.Windowing.Contracts.csproj" />
+    <ProjectReference Include="..\..\engine.input\Engine.Input.Contracts\Engine.Input.Contracts.csproj" />
+    <ProjectReference Include="..\..\engine.render\Engine.Render.Contracts\Engine.Render.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

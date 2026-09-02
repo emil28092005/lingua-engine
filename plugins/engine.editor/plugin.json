@@ -1,0 +1,12 @@
+{
+  "id":        "engine.editor",
+  "version":   "0.1.0",
+  "contracts": "Engine.Editor.Contracts.dll",
+  "assembly":  "Engine.Editor.dll",
+  "dependsOn": {
+    "engine.windowing": "^0.1",
+    "engine.input": "^0.1",
+    "engine.render": "^0.1"
+  },
+  "reloadable": true
+}
