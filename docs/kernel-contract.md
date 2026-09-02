@@ -303,35 +303,45 @@ Unity's Play-mode wait isn't about compilation — it's about serializing all
 script state, tearing the domain down, and recreating it. That step doesn't
 exist here: state never lived in plugin code to begin with. It lives in
 `World`, owned by the kernel, untouched by reload and untouched by entering
-Play.
+Play. Built and shipped in M3 — this is what actually runs, not the design
+sketch that preceded it:
 
 ```csharp
-// Engine.Editor / PlayMode.cs
+// IWorld (Engine.Kernel)
+string Snapshot();          // a scene-format dump of the whole graph
+void Restore(string snapshot);
 
-// Entering Play clones the object graph; it doesn't rebuild the runtime.
-void EnterPlay()
-{
-    _snapshot = world.Snapshot();   // deep-clone GameObjects + Components
-    schedule.SetGroup(SystemGroup.Play);
-}
-
-void ExitPlay()
-{
-    world.Restore(_snapshot);       // Play-mode edits roll back
-    schedule.SetGroup(SystemGroup.Edit);
-}
+// Engine.Editor.Contracts / IPlayModeController — engine.editor's real
+// implementation wraps exactly these two calls, nothing else:
+void EnterPlay() => _snapshot = world.Snapshot();
+void ExitPlay()  { world.Restore(_snapshot!); _snapshot = null; }
 ```
 
-A field-by-field object clone is slower than the raw array copy a
-struct-of-arrays `World` would give you — cloning thousands of `GameObject`s
-and their components is real allocation work, not a memcpy. For scenes at
-indie scale it's still low-single-digit milliseconds, and it's an
-order of magnitude cheaper than what Unity's domain reload does, and it only
-happens once per Play/Stop, not every frame.
+`Snapshot`/`Restore` reuse `SceneFormat` — the same JSON serialization a
+scene file on disk already uses — rather than a bespoke clone mechanism.
+A scene file and a Play-mode snapshot are the same problem (capture every
+`GameObject`'s state faithfully enough to reconstruct it) at two different
+moments; reusing already-proven serialization beat maintaining a second way
+to walk the same graph. `WorldSnapshotTests` times a 300-`GameObject`
+snapshot+restore at under 100ms — M3's literal "done when" — and the real
+editor path confirms it: `PlayModeController.EnterPlay` logs its own
+wall-clock cost, and a real run against `samples/WindowDemo`'s scene
+measured 13ms.
 
-Play becomes a system-group switch, not a world rebuild. A side effect of
-the same decision: system code can be edited *during* Play without
-restarting — state is preserved. That's the feedback loop the whole engine
+There's no `SystemGroup.Play`/`SystemGroup.Edit` split in the scheduler —
+that would mean every system declaring which group it belongs to, for a
+distinction the host loop alone can already make. `Engine.Host` checks
+`IPlayModeController.IsPlaying` once per frame and only runs `Stage.Update`
+while it's true; `Stage.Render`/`Stage.Present` run every frame regardless,
+so Edit mode still shows a live, responsive scene view — just one that
+never ticks. A project with no `engine.editor` loaded sees no behavior
+change at all: `Stage.Update` runs unconditionally, same as before Play
+mode existed.
+
+A side effect of Play being nothing but a snapshot and a stage-gate: system
+code can be edited *during* Play without restarting — hot-reloading a
+plugin mid-Play still works, because nothing about Play mode touches the
+ALC or plugin loading at all. That's the feedback loop the whole engine
 exists to enable.
 
 ## 6. Where this breaks
@@ -425,7 +435,7 @@ cost of changing course is still zero.
 | **M0** | **Kernel only.** `World` as a `GameObject`/`Component` hierarchy with type-indexed queries, staged scheduler with access enforcement, plugin host with ALC, service registry, JSON world dump. No window, no graphics. | An agent runs the full loop from §7 unassisted: edits a headless plugin, rebuilds, reads the changed dump — and the 200-cycle leak test is green. |
 | **M1** | **Window, input, a triangle.** Three separate plugins over Silk.NET. First real-load test of the data channel. | The triangle's color changes by editing system code, with no app restart. |
 | **M2** | **Assets and scenes.** Hot-reloading asset plugin, scene format, `World` serialization. | Swapping a texture on disk changes the picture with nothing stopped; a scene loads and saves. |
-| **M3** | **Editor as plugins.** Shell, reflection-based component inspector, hierarchy, gizmos, Play/Stop on snapshots. | Entering Play takes under 100 ms — the original complaint about Unity is closed. |
+| **M3** | **Editor as plugins — done.** Shell (`engine.editor`, ImGui over the live scene, see §5 and the new `Stage.Present`), reflection-based inspector and hierarchy, Play/Stop on snapshots, a real 3D translate gizmo driven by the actual camera. | Entering Play takes under 100 ms — the original complaint about Unity is closed. Proven twice: `WorldSnapshotTests` (kernel, 300 `GameObject`s) and a real editor run against `samples/WindowDemo` (13ms, logged by `PlayModeController`). |
 | **M4** | **One small game, end to end.** `engine.physics` over Box3D, audio, a Linux + Windows build pipeline. A 20-minute game, shipped as an executable. | The build runs on both platforms with no editor plugins in the shipped binary. |
 
 ---
@@ -458,9 +468,13 @@ deciding, in order:
 - **Frame stages: fixed, kernel-defined — not plugin-extensible.** A stage
   is part of the shared language every plugin and the host loop rely on;
   letting plugins register arbitrary custom stages would mean the host's
-  frame loop can no longer just call a known, closed set of `RunStage`s.
-  The set stays `{Update, Render}` until `FixedUpdate` arrives with M4 — no
-  stage gets added without something real to run in it.
+  frame loop can no longer just call a known, closed set of `RunStage`s. No
+  stage gets added without something real to run in it — which is exactly
+  what happened once: M3 added `Stage.Present` alongside `{Update, Render}`
+  when `engine.editor`'s ImGui overlay needed to draw after the scene but
+  before the buffers swap, and `engine.render`'s old single Clear+Draw+
+  SwapBuffers system had nowhere else to put the swap that wouldn't race
+  it. `Stage.FixedUpdate` is still the only stage left on the M4 list.
 - **Data-oriented fast path: still open, on purpose, with a trigger
   condition instead of a deadline.** Not "undecided" the way the other
   three were — deliberately not worth deciding before there's a concrete

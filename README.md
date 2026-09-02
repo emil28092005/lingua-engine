@@ -82,6 +82,40 @@ and a real hang, not a hypothetical one: `SwapBuffers` blocking forever
 once VSync had nothing to wait on — reproduced by locking the screen,
 fixed by turning VSync off, since nothing here needs frame pacing yet.
 
+**M3 done.** The editor is `engine.editor`, a plugin like any other — no
+special-cased editor layer in the kernel. An ImGui overlay (Silk.NET.OpenGL.
+Extensions.ImGui) draws over the live scene; getting it to actually appear
+in the same frame (not delayed by one) needed splitting `engine.render`'s
+old Draw-then-SwapBuffers system in two, so a new `Stage.Present` could run
+the swap after every `Stage.Render` system — this plugin's draw and
+`engine.editor`'s ImGui pass both — had drawn into the same back buffer.
+See the "Frame stages" resolution in
+[`docs/kernel-contract.md`](docs/kernel-contract.md) for why adding a stage
+was still the right call under a "fixed, kernel-defined" rule.
+
+Hierarchy and Inspector both work off reflection, not per-component-type
+code: `HierarchyPanel` walks `IWorld.Roots` directly, `InspectorPanel`
+enumerates a selected `GameObject`'s `Transform` and every attached
+`Component`'s public fields via `FieldInfo`, live-editable for
+int/float/bool/string/`Vector3`. A brand new component type in any plugin
+gets an Inspector for free the moment it's attached.
+
+Play/Stop is `IWorld.Snapshot()`/`Restore()` — a scene-format dump taken on
+Enter, restored on Exit — plus `Engine.Host` skipping `Stage.Update` outside
+Play. Nothing here is a domain reload; see
+[`docs/kernel-contract.md §5`](docs/kernel-contract.md#5-play-mode-without-domain-reload).
+M3's actual "done when," entering Play in under 100ms, is proven twice: a
+kernel-level timed test and a real editor run logging 13ms.
+
+The gizmo is a real 3-axis translate handle, not a flat 2D overlay — chosen
+deliberately over a scoped 2D version specifically so a screen-space drag
+means something: it projects the selected `GameObject`'s world position
+through the actual camera's View/Projection and reads the drag back the
+same way. The underlying math (`GizmoMath`) has no GL or ImGui dependency
+and is unit-tested on its own — including the case a screenshot can't
+easily catch, dragging an object parented under a non-uniformly-scaled
+parent.
+
 No physics yet — see the build order (M0–M4) in
 [`docs/kernel-contract.md`](docs/kernel-contract.md) for what's next.
 
