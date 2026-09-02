@@ -108,6 +108,24 @@ public sealed class GameObject
         return component;
     }
 
+    /// <summary>
+    /// Attaches an already-constructed component rather than building an
+    /// empty one — for a caller that only has a runtime <see cref="Type"/>,
+    /// not a compile-time <c>T</c>. Scene loading is the reason this
+    /// exists: it deserializes a component straight from JSON into a real
+    /// instance via <c>JsonSerializer.Deserialize(json, componentType)</c>,
+    /// and would otherwise need reflection just to call the generic
+    /// overload above.
+    /// </summary>
+    public Component AddComponent(Component component)
+    {
+        SystemAccessScope.CheckWrite(component.GetType());
+
+        _components.Add(component);
+        Owner?.IndexComponentAdded(this, component);
+        return component;
+    }
+
     public void RemoveComponent<T>() where T : Component
     {
         SystemAccessScope.CheckWrite(typeof(T));

@@ -1,8 +1,14 @@
 // The runtime host — drives both halves of the loop described in
 // docs/kernel-contract.md §7 and the M1 windowed case in §8:
 //
-//   engine run --headless --plugins <dir> --project <project.json> --frames <n> [--dump <path>]
-//   engine run --windowed --plugins <dir> --project <project.json> [--dump <path>]
+//   engine run --headless --plugins <dir> --project <project.json> --frames <n> [--scene <path>] [--dump <path>]
+//   engine run --windowed --plugins <dir> --project <project.json> [--scene <path>] [--dump <path>]
+//
+// --scene loads after every plugin in --project, not before: a scene file
+// names its components by type ("TypeFullName, AssemblyName" — see
+// SceneFormat), and that only resolves once the plugin that defines the
+// type has loaded its Contracts assembly into the Default ALC. It's
+// additive onto whatever's already in World — nothing pre-clears it.
 //
 // --windowed needs a loaded plugin that provides IEngineWindow (engine.
 // windowing) — Engine.Host references that plugin's *Contracts* assembly
@@ -11,10 +17,8 @@
 // loop is the host's job, not the kernel's: Engine.Kernel never hears about
 // Silk.NET at all.
 //
-// Deliberately not implemented yet, both noted explicitly below rather than
+// Deliberately not implemented yet, noted explicitly below rather than
 // silently accepted or rejected as gibberish:
-//   --scene    no scene format exists (that's M2) — a plugin that needs
-//              world content seeds it itself; see sandbox.echo's Configure.
 //   --assert   no query DSL exists to parse the doc's illustrative
 //              `count(Rigidbody where sleeping) == 12` syntax; a dump is
 //              plain JSON, so external tooling (jq, a test script) already
@@ -54,6 +58,7 @@ if (args[0] != "run")
 string? projectPath = null;
 string? pluginsPath = null;
 string? dumpPath = null;
+string? scenePath = null;
 string? screenshotPath = null;
 var frames = 0;
 var screenshotAfterFrames = 1;
@@ -82,13 +87,15 @@ for (var i = 1; i < args.Length; i++)
         case "--dump" when i + 1 < args.Length:
             dumpPath = args[++i];
             break;
+        case "--scene" when i + 1 < args.Length:
+            scenePath = args[++i];
+            break;
         case "--screenshot" when i + 1 < args.Length:
             screenshotPath = args[++i];
             break;
         case "--screenshot-after-frames" when i + 1 < args.Length:
             screenshotAfterFrames = int.Parse(args[++i]);
             break;
-        case "--scene":
         case "--assert":
             Console.Error.WriteLine($"'{args[i]}' isn't implemented yet — see the notes at the top of Program.cs.");
             return 1;
@@ -132,6 +139,20 @@ catch (Exception ex)
 }
 
 Console.WriteLine($"Loaded {loaded.Count} plugin(s): {string.Join(", ", loaded)}");
+
+if (scenePath is not null)
+{
+    try
+    {
+        SceneFormat.Load(world, scenePath);
+        Console.WriteLine($"Loaded scene '{scenePath}'.");
+    }
+    catch (Exception ex)
+    {
+        Console.Error.WriteLine($"Failed to load scene '{scenePath}': {ex.Message}");
+        return 1;
+    }
+}
 
 if (windowed)
 {
@@ -268,7 +289,7 @@ else
 
 if (dumpPath is not null)
 {
-    File.WriteAllText(dumpPath, WorldDumper.ToJson(world));
+    SceneFormat.Save(world, dumpPath);
     Console.WriteLine($"Wrote world dump to '{dumpPath}'.");
 }
 
@@ -279,8 +300,8 @@ static void PrintUsage()
     Console.Error.WriteLine(
         """
         Usage:
-          engine run --headless --plugins <dir> --project <project.json> --frames <n> [--dump <path>]
-          engine run --windowed --plugins <dir> --project <project.json> [--dump <path>]
+          engine run --headless --plugins <dir> --project <project.json> --frames <n> [--scene <path>] [--dump <path>]
+          engine run --windowed --plugins <dir> --project <project.json> [--scene <path>] [--dump <path>]
                       [--screenshot <path> [--screenshot-after-frames <n>]]
 
         --screenshot captures once, after <n> frames (default 1), then exits
