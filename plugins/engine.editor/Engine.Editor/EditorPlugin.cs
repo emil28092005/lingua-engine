@@ -4,6 +4,7 @@ using Engine.Kernel.Diagnostics;
 using Engine.Kernel.Plugins;
 using Engine.Kernel.Scheduling;
 using Engine.Kernel.World;
+using Engine.Render.Contracts;
 using Engine.Windowing.Contracts;
 using ImGuiNET;
 using Silk.NET.OpenGL;
@@ -29,16 +30,21 @@ namespace Engine.Editor;
 public sealed class EditorPlugin : IPlugin
 {
     private readonly EditorState _state = new();
+    private readonly TranslateGizmo _gizmo = new();
     private GL? _gl;
     private ImGuiController? _controller;
     private ITime? _time;
     private PlayModeController? _playMode;
+    private IEngineWindow? _window;
+    private ICameraService? _camera;
 
     public void Configure(IPluginContext ctx)
     {
         var window = ctx.Services.Require<IEngineWindow>();
         var input = ctx.Services.Require<IEngineInput>();
         _time = ctx.Time;
+        _window = window;
+        _camera = ctx.Services.Require<ICameraService>();
 
         window.Native.GLContext!.MakeCurrent();
         _gl = window.Native.CreateOpenGL();
@@ -61,6 +67,8 @@ public sealed class EditorPlugin : IPlugin
         _gl = null;
         _time = null;
         _playMode = null;
+        _window = null;
+        _camera = null;
     }
 
     private void DrawUi(IWorld world)
@@ -101,6 +109,7 @@ public sealed class EditorPlugin : IPlugin
 
         HierarchyPanel.Draw(world, _state);
         InspectorPanel.Draw(_state);
+        _gizmo.Draw(_state, _camera!, _window!);
 
         _controller.Render();
     }
