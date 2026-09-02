@@ -47,6 +47,19 @@ encoder — no `SixLabors.ImageSharp` (its license isn't MIT/Apache) and no
 desktop screenshot tool, so this is checkable without a screen at all,
 exactly the introspection story `docs/kernel-contract.md#7` argues for.
 
+**The kernel is closed.** All four questions the original design left open
+— `Time`/`Log`'s home, whether the Event Bus is real infrastructure or
+event-components, whether frame stages are fixed or plugin-extensible, and
+the data-oriented-fast-path question — are resolved, each with working code
+behind it, not just an answer written into the doc. `Time` and the Event
+Bus (`Publish`/`Subscribe`, leak-safe the same way `Schedule` already is)
+both shipped; `sandbox.echo` subscribes to `PluginLoaded` for real, so the
+200-cycle leak test now proves `EventBus` doesn't leak too, not just
+`Schedule`. See the resolutions in
+[`docs/kernel-contract.md`](docs/kernel-contract.md) — one of the four
+(the fast path) is deliberately still open, but with a concrete trigger
+condition instead of a deadline, not left vague.
+
 No physics yet — see the build order (M0–M4) in
 [`docs/kernel-contract.md`](docs/kernel-contract.md) for what's next.
 
