@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same native shim Engine.Physics itself ships — see that project's
+         own Content item for why it's copied directly (not under a
+         runtimes/<rid>/native/ path) rather than referenced some other
+         way. -->
+    <Content Include="../../plugins/engine.physics/Engine.Physics/native/liblingua_physics.so">
+      <Link>liblingua_physics.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\plugins\engine.physics\Engine.Physics\Engine.Physics.csproj" />
+  </ItemGroup>
+
+</Project>

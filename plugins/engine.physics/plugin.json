@@ -1,0 +1,8 @@
+{
+  "id":        "engine.physics",
+  "version":   "0.1.0",
+  "contracts": "Engine.Physics.Contracts.dll",
+  "assembly":  "Engine.Physics.dll",
+  "dependsOn": {},
+  "reloadable": true
+}

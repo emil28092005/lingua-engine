@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Generates the deps.json AssemblyDependencyResolver needs to find
+         this plugin's dependencies — see PluginLoadContext in Engine.Kernel,
+         and the same property on the other native-facing plugins. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The compiled native shim (Box3D folded in) — see
+         native/physics-native/. Copied straight into this plugin's own
+         output directory (not a runtimes/<rid>/native/ NuGet-style path):
+         DllImport's default unmanaged-library probing already checks the
+         calling assembly's own directory, and PluginLoadContext.
+         LoadUnmanagedDll falls back to that default probing whenever its
+         AssemblyDependencyResolver doesn't recognize the name (returning
+         IntPtr.Zero, not failing outright) — confirmed empirically, see
+         PhysicsWorldTests. -->
+    <Content Include="native/liblingua_physics.so">
+      <Link>liblingua_physics.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Engine.Kernel\Engine.Kernel.csproj" />
+    <ProjectReference Include="..\Engine.Physics.Contracts\Engine.Physics.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
