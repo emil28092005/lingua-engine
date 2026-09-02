@@ -27,6 +27,29 @@ internal static class SystemAccessScope
         return new Restore(previous);
     }
 
+    /// <summary>
+    /// Clears any active scope for the duration of a bulk, whole-world
+    /// operation — GameWorld.Restore is the one real caller. Restore
+    /// rebuilds arbitrary component types from a snapshot via
+    /// GameObject.AddComponent, and it can be invoked from inside a
+    /// running system (a Play/Stop button click handled during Stage.
+    /// Render, say) as easily as from unconstrained editor/host code. This
+    /// class's own doc comment already says editor code and scene
+    /// construction are unconstrained by design; without this, that's only
+    /// true when the call happens to originate outside any system's own
+    /// scope, not because Restore is actually exempt — a real bug, not a
+    /// hypothetical one: entering then exiting Play mode from the editor's
+    /// own Stop button throws, because ExitPlay runs inside EditorPlugin's
+    /// Stage.Render system, which (correctly) never declares Writes&lt;T&gt;()
+    /// for component types it has no compile-time knowledge of.
+    /// </summary>
+    public static IDisposable Suspend()
+    {
+        var previous = Current.Value;
+        Current.Value = null;
+        return new Restore(previous);
+    }
+
     /// <summary>Querying or fetching a component counts as a read — either
     /// Reads&lt;T&gt;() or Writes&lt;T&gt;() satisfies it.</summary>
     public static void CheckRead(Type componentType)

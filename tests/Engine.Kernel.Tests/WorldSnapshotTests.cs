@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Engine.Kernel.Scheduling;
 using Engine.Kernel.World;
 
 namespace Engine.Kernel.Tests;
@@ -102,5 +103,31 @@ public class WorldSnapshotTests
         Assert.True(
             stopwatch.ElapsedMilliseconds < 100,
             $"Snapshot + Restore of 300 GameObjects took {stopwatch.ElapsedMilliseconds} ms, expected < 100 ms.");
+    }
+
+    // A real bug, caught by hand: entering then exiting Play mode via
+    // engine.editor's own Stop button threw InvalidOperationException,
+    // because ExitPlay runs Restore from inside EditorPlugin's Stage.
+    // Render system — which correctly declares no Reads/Writes at all, it
+    // has no compile-time knowledge of QuadRenderer or any other game's
+    // component types — and Restore rebuilds those very types via
+    // AddComponent. Every other test in this file calls Restore directly,
+    // outside any system's scope, which is exactly why none of them caught
+    // this. This one reproduces the real call shape: a system with no
+    // declared access, calling Restore, run through the real Schedule.
+    [Fact]
+    public void Restore_Called_From_A_System_With_No_Declared_Access_Does_Not_Throw()
+    {
+        var world = new GameWorld();
+        var go = world.CreateGameObject("Hero");
+        go.AddComponent<Health>().Value = 100;
+        var snapshot = world.Snapshot();
+
+        var schedule = new Schedule();
+        schedule.Add(Stage.Update, (IWorld w) => w.Restore(snapshot)); // no Reads/Writes — like EditorPlugin's DrawUi
+
+        var exception = Record.Exception(() => schedule.RunStage(Stage.Update, world));
+
+        Assert.Null(exception);
     }
 }

@@ -113,6 +113,12 @@ public sealed class GameWorld : IWorld
 
     public void Restore(string snapshot)
     {
+        // Suspended for the whole rebuild, not just around AddComponent:
+        // Restore is a bulk, whole-world reset regardless of which system
+        // (if any) happened to call it — see SystemAccessScope.Suspend's
+        // own doc comment for why this is a real, not hypothetical, fix.
+        using var _ = SystemAccessScope.Suspend();
+
         foreach (var root in Roots.ToArray())
             Destroy(root);
 
