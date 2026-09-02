@@ -12,11 +12,14 @@ namespace Engine.Render;
 
 /// <summary>
 /// M3's render pipeline: a real perspective camera, drawing every
-/// GameObject with a QuadRenderer at its own WorldMatrix — upgraded from
-/// M2's single hardcoded NDC-space quad specifically because gizmos need
-/// real 3D geometry and a real camera to mean anything (a handle dragged
-/// in screen space has to map onto an actual 3D axis). See M3 in
-/// docs/kernel-contract.md §8.
+/// GameObject with a QuadRenderer or CubeRenderer at its own WorldMatrix —
+/// upgraded from M2's single hardcoded NDC-space quad specifically because
+/// gizmos need real 3D geometry and a real camera to mean anything (a
+/// handle dragged in screen space has to map onto an actual 3D axis). See
+/// M3 in docs/kernel-contract.md §8. CubeRenderer itself is M4's addition,
+/// for the same reason M3's gizmo needed a real camera: a BoxCollider
+/// falling and settling only reads as a physics object if it looks like
+/// one, not a flat card.
 ///
 /// GameObject.WorldMatrix and this plugin's own matrices are both
 /// System.Numerics.Matrix4x4, which is row-vector (v' = v * M, and
@@ -95,11 +98,64 @@ public sealed class RenderPlugin : IPlugin
          0.5f,  0.5f, 0f,      1f, 1f,
     ];
 
+    // Unit cube (1x1x1 before LocalScale), centered at its own origin — see
+    // CubeRenderer's own doc comment for why this exists (M4's physics
+    // demo needs falling BoxColliders to actually look like boxes). No
+    // face culling is enabled anywhere in this plugin, so winding order
+    // doesn't matter here the way it would with CullFace on.
+    private static readonly float[] CubeVertices =
+    [
+        // position              uv
+        -0.5f, -0.5f,  0.5f,     0f, 0f, // front (+Z)
+         0.5f, -0.5f,  0.5f,     1f, 0f,
+         0.5f,  0.5f,  0.5f,     1f, 1f,
+         0.5f,  0.5f,  0.5f,     1f, 1f,
+        -0.5f,  0.5f,  0.5f,     0f, 1f,
+        -0.5f, -0.5f,  0.5f,     0f, 0f,
+
+         0.5f, -0.5f, -0.5f,     0f, 0f, // back (-Z)
+        -0.5f, -0.5f, -0.5f,     1f, 0f,
+        -0.5f,  0.5f, -0.5f,     1f, 1f,
+        -0.5f,  0.5f, -0.5f,     1f, 1f,
+         0.5f,  0.5f, -0.5f,     0f, 1f,
+         0.5f, -0.5f, -0.5f,     0f, 0f,
+
+        -0.5f, -0.5f, -0.5f,     0f, 0f, // left (-X)
+        -0.5f, -0.5f,  0.5f,     1f, 0f,
+        -0.5f,  0.5f,  0.5f,     1f, 1f,
+        -0.5f,  0.5f,  0.5f,     1f, 1f,
+        -0.5f,  0.5f, -0.5f,     0f, 1f,
+        -0.5f, -0.5f, -0.5f,     0f, 0f,
+
+         0.5f, -0.5f,  0.5f,     0f, 0f, // right (+X)
+         0.5f, -0.5f, -0.5f,     1f, 0f,
+         0.5f,  0.5f, -0.5f,     1f, 1f,
+         0.5f,  0.5f, -0.5f,     1f, 1f,
+         0.5f,  0.5f,  0.5f,     0f, 1f,
+         0.5f, -0.5f,  0.5f,     0f, 0f,
+
+        -0.5f,  0.5f,  0.5f,     0f, 0f, // top (+Y)
+         0.5f,  0.5f,  0.5f,     1f, 0f,
+         0.5f,  0.5f, -0.5f,     1f, 1f,
+         0.5f,  0.5f, -0.5f,     1f, 1f,
+        -0.5f,  0.5f, -0.5f,     0f, 1f,
+        -0.5f,  0.5f,  0.5f,     0f, 0f,
+
+        -0.5f, -0.5f, -0.5f,     0f, 0f, // bottom (-Y)
+         0.5f, -0.5f, -0.5f,     1f, 0f,
+         0.5f, -0.5f,  0.5f,     1f, 1f,
+         0.5f, -0.5f,  0.5f,     1f, 1f,
+        -0.5f, -0.5f,  0.5f,     0f, 1f,
+        -0.5f, -0.5f, -0.5f,     0f, 0f,
+    ];
+
     private GL? _gl;
     private IEngineWindow? _window;
     private CameraService? _camera;
     private uint _vao;
     private uint _vbo;
+    private uint _cubeVao;
+    private uint _cubeVbo;
     private uint _program;
     private uint _texture;
     private int _modelLocation;
@@ -144,6 +200,20 @@ public sealed class RenderPlugin : IPlugin
         _gl.EnableVertexAttribArray(1);
 
         _gl.BindVertexArray(0);
+
+        _cubeVao = _gl.GenVertexArray();
+        _gl.BindVertexArray(_cubeVao);
+
+        _cubeVbo = _gl.GenBuffer();
+        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _cubeVbo);
+        _gl.BufferData<float>(BufferTargetARB.ArrayBuffer, CubeVertices, BufferUsageARB.StaticDraw);
+
+        _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, stride, (void*)0);
+        _gl.EnableVertexAttribArray(0);
+        _gl.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, stride, (void*)(3 * sizeof(float)));
+        _gl.EnableVertexAttribArray(1);
+
+        _gl.BindVertexArray(0);
         _gl.Enable(EnableCap.DepthTest);
 
         var assets = ctx.Services.Require<IAssetService>();
@@ -159,7 +229,7 @@ public sealed class RenderPlugin : IPlugin
         ctx.Events.Subscribe(_onTextureReloaded);
 
         ctx.Services.Provide<IScreenCapture>(new GlScreenCapture(_gl, _window));
-        ctx.Schedule.Add(Stage.Render, Draw).Reads<QuadRenderer>();
+        ctx.Schedule.Add(Stage.Render, Draw).Reads<QuadRenderer>().Reads<CubeRenderer>();
         ctx.Schedule.Add(Stage.Present, Present);
         ctx.Log.Info("GL context created, 3D quad pipeline ready");
     }
@@ -176,6 +246,8 @@ public sealed class RenderPlugin : IPlugin
             _gl.DeleteTexture(_texture);
             _gl.DeleteVertexArray(_vao);
             _gl.DeleteBuffer(_vbo);
+            _gl.DeleteVertexArray(_cubeVao);
+            _gl.DeleteBuffer(_cubeVbo);
             _gl.DeleteProgram(_program);
             _gl.Dispose();
         }
@@ -236,6 +308,13 @@ public sealed class RenderPlugin : IPlugin
         {
             SetMatrix(_modelLocation, go.WorldMatrix);
             _gl.DrawArrays(PrimitiveType.Triangles, 0, 6);
+        }
+
+        _gl.BindVertexArray(_cubeVao);
+        foreach (var go in world.Query<CubeRenderer>())
+        {
+            SetMatrix(_modelLocation, go.WorldMatrix);
+            _gl.DrawArrays(PrimitiveType.Triangles, 0, 36);
         }
     }
 

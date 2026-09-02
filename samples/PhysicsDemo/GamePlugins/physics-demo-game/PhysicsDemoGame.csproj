@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>PhysicsDemoGame</RootNamespace>
+    <AssemblyName>PhysicsDemoGame</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../../src/Engine.Kernel/Engine.Kernel.csproj" />
+    <ProjectReference Include="../../../../plugins/engine.input/Engine.Input.Contracts/Engine.Input.Contracts.csproj" />
+    <ProjectReference Include="../../../../plugins/engine.physics/Engine.Physics.Contracts/Engine.Physics.Contracts.csproj" />
+    <ProjectReference Include="../../../../plugins/engine.audio/Engine.Audio.Contracts/Engine.Audio.Contracts.csproj" />
+    <ProjectReference Include="../../../../plugins/engine.render/Engine.Render.Contracts/Engine.Render.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

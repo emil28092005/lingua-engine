@@ -1,0 +1,13 @@
+{
+  "engineVersion": "^0.1",
+  "plugins": [
+    { "id": "engine.windowing" },
+    { "id": "engine.assets" },
+    { "id": "engine.render" },
+    { "id": "engine.input" },
+    { "id": "engine.physics" },
+    { "id": "engine.audio" },
+    { "id": "physics-demo-game" }
+  ],
+  "pluginPaths": ["GamePlugins"]
+}

@@ -1,0 +1,12 @@
+{
+  "id":        "physics-demo-game",
+  "version":   "0.1.0",
+  "assembly":  "PhysicsDemoGame.dll",
+  "dependsOn": {
+    "engine.input": "^0.1",
+    "engine.physics": "^0.1",
+    "engine.audio": "^0.1",
+    "engine.render": "^0.1"
+  },
+  "reloadable": true
+}

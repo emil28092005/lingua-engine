@@ -32,3 +32,10 @@ imgui.ini
 ## Engine.Physics/native/) is what the engine actually ships.
 native/*/build/
 native/*/.fetchcontent-cache/
+
+## scripts/run-physics-demo.sh copies the game-specific plugin's built
+## output directly into its own folder (that's where its own pluginPaths
+## entry in project.json points) — regenerated, not source. plugin.json,
+## the .csproj, and the .cs files there stay tracked.
+samples/*/GamePlugins/*/*.dll
+samples/*/GamePlugins/*/*.pdb
