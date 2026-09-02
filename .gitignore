@@ -18,6 +18,9 @@ Thumbs.db
 out/
 artifacts/
 
+## scripts/stage-plugins.sh's output — regenerated from plugins/, not source.
+.stage/
+
 ## ImGui's own persisted window layout (position/size/open-state) — a
 ## per-machine editing session preference, not project source, same
 ## category as an IDE's own workspace state.
