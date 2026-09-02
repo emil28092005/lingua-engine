@@ -60,12 +60,21 @@ public sealed class EditorPlugin : IPlugin
     {
         _controller!.Update(_time!.DeltaTime);
 
+        // Nothing selected yet and there's something to select: default to
+        // the first root rather than opening on an empty, useless
+        // Inspector. Only fires once — any real click overwrites it, and
+        // it never fights a deliberate deselect because there's no way to
+        // deselect yet.
+        if (_state.Selected is null && world.Roots.Count > 0)
+            _state.Selected = world.Roots[0];
+
         ImGui.Begin("Lingua Editor");
         ImGui.Text($"FPS: {1f / MathF.Max(_time.DeltaTime, 0.0001f):F0}");
         ImGui.Text($"Frame: {_time.FrameCount}");
         ImGui.End();
 
         HierarchyPanel.Draw(world, _state);
+        InspectorPanel.Draw(_state);
 
         _controller.Render();
     }
