@@ -1,0 +1,7 @@
+{
+  "id":        "sandbox.failing-configure",
+  "version":   "0.1.0",
+  "assembly":  "Sandbox.FailingConfigure.dll",
+  "dependsOn": {},
+  "reloadable": true
+}

@@ -83,6 +83,21 @@ LINGUA_API void Lingua_DestroyWorld( int32_t worldHandle )
 	g_worldUsed[worldHandle] = false;
 }
 
+// Exists so C# can assert on the native side's own bookkeeping directly —
+// PhysicsWorld's C#-side _bodies dictionary can look correct while the
+// native table underneath it has leaked a body Sync should have destroyed
+// (see PhysicsWorldTests for the regression this catches).
+LINGUA_API int32_t Lingua_GetBodyCount( void )
+{
+	int32_t count = 0;
+	for ( int32_t i = 0; i < LINGUA_MAX_BODIES; i++ )
+	{
+		if ( g_bodyUsed[i] )
+			count++;
+	}
+	return count;
+}
+
 LINGUA_API void Lingua_WorldStep( int32_t worldHandle, float timeStep, int32_t subStepCount )
 {
 	if ( !ValidWorld( worldHandle ) )

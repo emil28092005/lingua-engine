@@ -73,7 +73,34 @@ public sealed class PluginHost(
         events.RegisterPlugin(manifest.Id, implAssembly);
         var ctx = new PluginContext(manifest.Id, world, services, schedule, events, time);
 
-        instance.Configure(ctx);
+        try
+        {
+            instance.Configure(ctx);
+        }
+        catch
+        {
+            // Configure can fail after already doing real work — Schedule.
+            // Add, Events.Subscribe, Services.Provide calls all happen
+            // before whatever line actually throws. None of that unwinds
+            // on its own, and because _loaded never gets an entry for this
+            // id below, the plugin ends up neither loaded nor unloadable:
+            // its ALC stays rooted forever and any systems/subscriptions it
+            // did register before throwing keep running. Best-effort
+            // Shutdown first — it's the only thing that knows which
+            // services this specific plugin provided, so it's the only way
+            // to Revoke them — then the two RemoveAllFrom calls PluginHost
+            // itself can make unconditionally, then unload the ALC. Each
+            // step is wrapped so a broken Shutdown/unload can't hide the
+            // real Configure failure being rethrown below.
+            try { instance.Shutdown(ctx); } catch { /* best-effort */ }
+
+            schedule.RemoveAllFrom(manifest.Id);
+            events.RemoveAllFrom(manifest.Id);
+
+            try { alc.Unload(); } catch { /* best-effort */ }
+
+            throw;
+        }
 
         _loaded[manifest.Id] = new LoadedPlugin(manifest, alc, instance, ctx);
         events.Publish(new PluginLoaded(manifest.Id));
@@ -111,6 +138,16 @@ public sealed class PluginHost(
 
         return loadedIds;
     }
+
+    /// <summary>
+    /// Lets a caller check before calling Unload/Load instead of catching
+    /// InvalidOperationException to find out — Engine.Host's live-reload
+    /// command needs this: a plugin whose previous reload attempt failed
+    /// partway through Load isn't loaded any more (see Load's own rollback
+    /// on a Configure failure), so unconditionally trying Unload first
+    /// would itself throw "not loaded" on every retry.
+    /// </summary>
+    public bool IsLoaded(string pluginId) => _loaded.ContainsKey(pluginId);
 
     /// <summary>
     /// Runs Shutdown(), then unloads the plugin's ALC. Returns a weak

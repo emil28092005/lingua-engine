@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Engine.Kernel\Engine.Kernel.csproj" />
+    <!-- Reusing sandbox.echo's own Ping component, not defining a new one:
+         it's already a shared, cross-ALC-safe Default-ALC type, and gives
+         FailedConfigureRollbackTests a real, deterministic side effect to
+         assert on (Ping.Count) instead of a GC-timing-sensitive check. -->
+    <ProjectReference Include="..\..\sandbox.echo\Sandbox.Echo.Contracts\Sandbox.Echo.Contracts.csproj" />
+  </ItemGroup>
+</Project>

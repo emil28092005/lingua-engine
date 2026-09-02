@@ -37,6 +37,7 @@ public sealed class EditorPlugin : IPlugin
     private PlayModeController? _playMode;
     private IEngineWindow? _window;
     private ICameraService? _camera;
+    private bool _wasPlaying;
 
     public void Configure(IPluginContext ctx)
     {
@@ -107,10 +108,50 @@ public sealed class EditorPlugin : IPlugin
         ImGui.Text(_playMode.IsPlaying ? "(Playing)" : "(Edit mode)");
         ImGui.End();
 
+        // Found by independent review: ExitPlay's Restore destroys every
+        // GameObject and rebuilds fresh instances from the snapshot, but
+        // EditorState.Selected kept pointing at the old, now-detached one
+        // — Inspector and the gizmo would silently keep editing an object
+        // no longer in the world. Comparing against last frame's own
+        // IsPlaying (not just reacting to the button above) catches this
+        // uniformly regardless of *how* Play exited — the Stop button
+        // here, or the "stop" stdin command Engine.Host already processed
+        // before this Render-stage system ran this frame; the button
+        // alone would miss the second path entirely, the same
+        // stdin-vs-real-control gap already hit once this session.
+        if (_wasPlaying && !_playMode.IsPlaying)
+        {
+            var previousName = _state.Selected?.Name;
+            _state.Selected = previousName is null ? null : FindByName(world.Roots, previousName);
+        }
+        _wasPlaying = _playMode.IsPlaying;
+
         HierarchyPanel.Draw(world, _state);
         InspectorPanel.Draw(_state);
         _gizmo.Draw(_state, _camera!, _window!);
 
         _controller.Render();
+    }
+
+    // Best-effort by name, not identity — Restore rebuilds fresh
+    // GameObject instances, so there's no identity to match against
+    // anymore. Two siblings sharing a name (nothing stops it, same caveat
+    // HierarchyPanel's own PushID-by-hashcode already documents) means
+    // this picks the first match, not necessarily "the same one" — an
+    // acceptable approximation for reselecting after Play, not a
+    // guarantee.
+    private static GameObject? FindByName(IReadOnlyList<GameObject> roots, string name)
+    {
+        foreach (var go in roots)
+        {
+            if (go.Name == name)
+                return go;
+
+            var found = FindByName(go.Children, name);
+            if (found is not null)
+                return found;
+        }
+
+        return null;
     }
 }

@@ -32,6 +32,11 @@
          the harness's Default ALC, which defeats the point of a leak test. -->
     <ProjectReference Include="..\..\plugins\sandbox.echo\Sandbox.Echo\Sandbox.Echo.csproj"
                        ReferenceOutputAssembly="false" />
+
+    <!-- Same build-order-only reasoning, for PluginHostTests' Configure-
+         throws-partway-through fixture. -->
+    <ProjectReference Include="..\..\plugins\sandbox.failing-configure\Sandbox.FailingConfigure\Sandbox.FailingConfigure.csproj"
+                       ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- Flatten plugin.json + both built DLLs into one directory under this
@@ -52,6 +57,15 @@
     </None>
     <None Include="..\..\plugins\sandbox.echo\Sandbox.Echo\bin\$(Configuration)\$(TargetFramework)\Sandbox.Echo.dll">
       <Link>plugins\sandbox.echo\Sandbox.Echo.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+
+    <None Include="..\..\plugins\sandbox.failing-configure\plugin.json">
+      <Link>plugins\sandbox.failing-configure\plugin.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\plugins\sandbox.failing-configure\Sandbox.FailingConfigure\bin\$(Configuration)\$(TargetFramework)\Sandbox.FailingConfigure.dll">
+      <Link>plugins\sandbox.failing-configure\Sandbox.FailingConfigure.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

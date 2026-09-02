@@ -230,13 +230,24 @@ if (windowed)
                     Console.WriteLine($"Reloading '{cmd.Argument}'...");
                     try
                     {
-                        host.Unload(cmd.Argument);
+                        // Not unconditional: a plugin whose previous
+                        // reload already failed inside Load (a bad
+                        // Configure — now rolled back, see PluginHost.
+                        // Load) isn't loaded any more, and Unload would
+                        // just throw "not loaded" on this retry instead of
+                        // ever reaching Load again.
+                        if (host.IsLoaded(cmd.Argument))
+                            host.Unload(cmd.Argument);
+
                         host.Load(pluginDirectory);
                         Console.WriteLine($"Reloaded '{cmd.Argument}'. World state and the window were untouched.");
                     }
                     catch (Exception ex)
                     {
-                        Console.Error.WriteLine($"Failed to reload '{cmd.Argument}': {ex.Message}");
+                        Console.Error.WriteLine(
+                            $"Failed to reload '{cmd.Argument}': {ex.Message} " +
+                            $"'{cmd.Argument}' is now unloaded (not just still running the old code) — " +
+                            $"fix the error and run 'r {cmd.Argument}' again.");
                     }
 
                     break;

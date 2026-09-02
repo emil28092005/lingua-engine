@@ -116,8 +116,23 @@ and is unit-tested on its own — including the case a screenshot can't
 easily catch, dragging an object parented under a non-uniformly-scaled
 parent.
 
-No physics yet — see the build order (M0–M4) in
-[`docs/kernel-contract.md`](docs/kernel-contract.md) for what's next.
+**M4 in progress.** `engine.physics` wraps Box3D and `engine.audio` wraps
+miniaudio, both through a deliberately narrow C shim — neither library's
+own config structs (large, with function pointers and, for Box3D, at
+least one type that "cannot be directly copied") cross the P/Invoke
+boundary, only plain scalars and handles do. `samples/PhysicsDemo` ties
+physics, audio, input, and rendering together in one running project with
+`engine.editor` deliberately left out of its `project.json` — the
+shippable configuration, not the dev one. `.github/workflows/build.yml`
+builds and tests both native shims and the full solution on real
+`ubuntu-latest` and `windows-latest` runners, since nothing on a single
+Linux dev machine can otherwise verify the Windows half of M4's own "done
+when." Still open: the build pipeline hasn't actually run on GitHub yet
+(pending a `workflow` OAuth scope grant), and M4's "one small game"
+target is the physics demo so far, not yet a scored 20-minute one.
+
+See the build order (M0–M4) in
+[`docs/kernel-contract.md`](docs/kernel-contract.md) for the rest.
 
 Design and implementation are argued over in the same place: the doc is
 still the thing to disagree with before code changes to match.

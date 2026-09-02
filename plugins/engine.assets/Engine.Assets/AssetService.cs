@@ -84,6 +84,16 @@ internal sealed class AssetService(IEventBus events, ILogger log) : IAssetServic
             {
                 await Task.Delay(50);
             }
+            catch (IOException ex)
+            {
+                // The 5th and final attempt — the `when` guard above only
+                // covers attempts 0-3, so this is the one case that used
+                // to fall out of the loop and propagate from a
+                // fire-and-forget Task (`_ = Task.Run(...)`) as an
+                // unobserved exception: no log, no event, nothing to show
+                // the reload silently never happened.
+                log.Warn($"Giving up reloading '{path}' after 5 attempts: {ex.Message}");
+            }
         }
     }
 

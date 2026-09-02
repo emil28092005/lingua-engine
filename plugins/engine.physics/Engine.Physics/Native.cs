@@ -29,6 +29,12 @@ internal static class Native
     [DllImport(Lib)]
     public static extern void Lingua_WorldStep(int worldHandle, float timeStep, int subStepCount);
 
+    /// <summary>Total live bodies across every world — a test-only escape
+    /// hatch (see PhysicsWorldTests) to assert on the native side's own
+    /// bookkeeping, not just PhysicsWorld's C#-side dictionary.</summary>
+    [DllImport(Lib)]
+    public static extern int Lingua_GetBodyCount();
+
     [DllImport(Lib)]
     public static extern int Lingua_CreateBoxBody(
         int worldHandle,

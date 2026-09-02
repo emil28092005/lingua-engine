@@ -20,7 +20,7 @@ internal sealed class PhysicsWorld : IDisposable
     private readonly int _handle;
     private readonly ILogger _log;
     private readonly Dictionary<GameObject, int> _bodies = [];
-    private readonly HashSet<GameObject> _warnedMissingCollider = [];
+    private readonly HashSet<GameObject> _warnedFailed = [];
 
     public PhysicsWorld(Vector3 gravity, ILogger log)
     {
@@ -39,14 +39,23 @@ internal sealed class PhysicsWorld : IDisposable
                 TryCreateBody(go);
         }
 
-        if (_bodies.Count == live.Count)
+        // Comparing counts alone would miss this: destroying one tracked
+        // GameObject and gaining a different untracked one in the same
+        // Sync leaves _bodies.Count == live.Count with the sets actually
+        // different — the stale native body would never get destroyed and
+        // would keep simulating forever. Restore (every ExitPlay) hits
+        // this reliably whenever the scene has both a Rigidbody+collider
+        // GameObject and a Rigidbody-without-collider one, since the
+        // latter never enters _bodies to begin with.
+        var stale = _bodies.Keys.Where(go => !live.Contains(go)).ToList();
+        if (stale.Count == 0)
             return;
 
-        foreach (var stale in _bodies.Keys.Where(go => !live.Contains(go)).ToList())
+        foreach (var go in stale)
         {
-            Native.Lingua_DestroyBody(_bodies[stale]);
-            _bodies.Remove(stale);
-            _warnedMissingCollider.Remove(stale);
+            Native.Lingua_DestroyBody(_bodies[go]);
+            _bodies.Remove(go);
+            _warnedFailed.Remove(go);
         }
     }
 
@@ -111,8 +120,22 @@ internal sealed class PhysicsWorld : IDisposable
         }
         else
         {
-            if (_warnedMissingCollider.Add(go))
+            if (_warnedFailed.Add(go))
                 _log.Warn($"'{go.Name}' has a Rigidbody but no BoxCollider/SphereCollider — no physics body created.");
+            return;
+        }
+
+        // -1 means the native shim refused (an invalid world handle, or
+        // its fixed-capacity body table — 8192 — is full). Storing it
+        // anyway would silently "work": every later Lingua_GetBodyTransform
+        // call on handle -1 fails ValidBody's check and leaves the out
+        // params at their P/Invoke-zeroed default, teleporting the
+        // GameObject to the origin with a degenerate all-zero rotation
+        // every FixedUpdate — no exception, no log, just a wrong position.
+        if (handle < 0)
+        {
+            if (_warnedFailed.Add(go))
+                _log.Warn($"'{go.Name}' failed to create a native physics body (world invalid or body table full).");
             return;
         }
 
