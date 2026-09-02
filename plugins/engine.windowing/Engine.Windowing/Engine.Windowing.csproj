@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Generates the deps.json AssemblyDependencyResolver needs to find
+         this plugin's NuGet dependencies — see PluginLoadContext in
+         Engine.Kernel, and the same property on Sandbox.Echo.csproj. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.Windowing" Version="2.23.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Engine.Kernel\Engine.Kernel.csproj" />
+    <ProjectReference Include="..\Engine.Windowing.Contracts\Engine.Windowing.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

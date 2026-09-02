@@ -1,0 +1,8 @@
+{
+  "id":        "engine.windowing",
+  "version":   "0.1.0",
+  "contracts": "Engine.Windowing.Contracts.dll",
+  "assembly":  "Engine.Windowing.dll",
+  "dependsOn": {},
+  "reloadable": true
+}

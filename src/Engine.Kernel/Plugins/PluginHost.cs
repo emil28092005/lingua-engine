@@ -149,6 +149,9 @@ public sealed class PluginHost(IWorld world, IServiceRegistry services, Schedule
 
     private static void LoadContractsIntoDefaultAlc(string pluginDirectory, PluginManifest manifest)
     {
+        if (manifest.Contracts is null)
+            return;
+
         var contractsPath = Path.Combine(pluginDirectory, manifest.Contracts);
         var name = AssemblyName.GetAssemblyName(contractsPath).Name;
 

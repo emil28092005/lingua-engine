@@ -10,8 +10,11 @@ public sealed class PluginManifest
     public required string Id { get; init; }
     public required string Version { get; init; }
 
-    /// <summary>Assembly loaded into the Default ALC. Never unloads. See §4.</summary>
-    public required string Contracts { get; init; }
+    /// <summary>Assembly loaded into the Default ALC. Never unloads. See §4.
+    /// Null for a plugin with no types or interfaces for anything else to
+    /// reference — manufacturing an empty Contracts assembly just to fill
+    /// this field would document nothing real.</summary>
+    public string? Contracts { get; init; }
 
     /// <summary>Assembly loaded into a collectible ALC. Reloadable. See §4.</summary>
     public required string Assembly { get; init; }

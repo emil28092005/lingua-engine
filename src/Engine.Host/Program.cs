@@ -1,7 +1,15 @@
-// The runtime host — the headless half of the loop described in
-// docs/kernel-contract.md §7:
+// The runtime host — drives both halves of the loop described in
+// docs/kernel-contract.md §7 and the M1 windowed case in §8:
 //
 //   engine run --headless --plugins <dir> --project <project.json> --frames <n> [--dump <path>]
+//   engine run --windowed --plugins <dir> --project <project.json> [--dump <path>]
+//
+// --windowed needs a loaded plugin that provides IEngineWindow (engine.
+// windowing) — Engine.Host references that plugin's *Contracts* assembly
+// directly (never its implementation, which stays dynamically loaded via
+// PluginHost/ALC same as any other plugin) because driving a window-pumped
+// loop is the host's job, not the kernel's: Engine.Kernel never hears about
+// Silk.NET at all.
 //
 // Deliberately not implemented yet, both noted explicitly below rather than
 // silently accepted or rejected as gibberish:
@@ -22,6 +30,7 @@ using Engine.Kernel.Plugins;
 using Engine.Kernel.Scheduling;
 using Engine.Kernel.Services;
 using Engine.Kernel.World;
+using Engine.Windowing.Contracts;
 
 if (args.Length == 0)
 {
@@ -46,6 +55,7 @@ string? pluginsPath = null;
 string? dumpPath = null;
 var frames = 0;
 var headless = false;
+var windowed = false;
 
 for (var i = 1; i < args.Length; i++)
 {
@@ -53,6 +63,9 @@ for (var i = 1; i < args.Length; i++)
     {
         case "--headless":
             headless = true;
+            break;
+        case "--windowed":
+            windowed = true;
             break;
         case "--frames" when i + 1 < args.Length:
             frames = int.Parse(args[++i]);
@@ -77,9 +90,10 @@ for (var i = 1; i < args.Length; i++)
     }
 }
 
-if (!headless)
+if (headless == windowed)
 {
-    Console.Error.WriteLine("Only --headless is implemented — there's no windowing plugin yet.");
+    Console.Error.WriteLine("Pass exactly one of --headless or --windowed.");
+    PrintUsage();
     return 1;
 }
 
@@ -92,7 +106,8 @@ if (projectPath is null || pluginsPath is null)
 
 var world = new GameWorld();
 var schedule = new Schedule();
-var host = new PluginHost(world, new ServiceRegistry(), schedule, new NullEventBus());
+var services = new ServiceRegistry();
+var host = new PluginHost(world, services, schedule, new NullEventBus());
 
 IReadOnlyList<string> loaded;
 try
@@ -107,10 +122,69 @@ catch (Exception ex)
 
 Console.WriteLine($"Loaded {loaded.Count} plugin(s): {string.Join(", ", loaded)}");
 
-for (var frame = 0; frame < frames; frame++)
-    schedule.RunStage(Stage.Update, world);
+if (windowed)
+{
+    if (!services.TryRequire<IEngineWindow>(out var window))
+    {
+        Console.Error.WriteLine(
+            "--windowed requires a loaded plugin that provides IEngineWindow (e.g. engine.windowing).");
+        return 1;
+    }
 
-Console.WriteLine($"Ran {frames} update frame(s).");
+    Console.WriteLine("Window open — close it to exit. Type 'r <plugin-id>' + Enter to reload a plugin live.");
+
+    // Line-based, not Console.ReadKey: KeyAvailable needs a real terminal
+    // in raw mode and throws or misbehaves on piped/redirected stdin. A
+    // background reader plus a thread-safe queue works either way and
+    // costs nothing on the render loop's own thread.
+    var reloadQueue = new System.Collections.Concurrent.ConcurrentQueue<string>();
+    _ = Task.Run(() =>
+    {
+        string? line;
+        while ((line = Console.ReadLine()) is not null)
+        {
+            var parts = line.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            if (parts is ["r", var pluginId])
+                reloadQueue.Enqueue(pluginId);
+        }
+    });
+
+    while (!window!.IsClosing)
+    {
+        window.Native.DoEvents();
+
+        if (window.IsClosing)
+            break;
+
+        while (reloadQueue.TryDequeue(out var pluginId))
+        {
+            var pluginDirectory = Path.Combine(pluginsPath, pluginId);
+            Console.WriteLine($"Reloading '{pluginId}'...");
+            try
+            {
+                host.Unload(pluginId);
+                host.Load(pluginDirectory);
+                Console.WriteLine($"Reloaded '{pluginId}'. World state and the window were untouched.");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to reload '{pluginId}': {ex.Message}");
+            }
+        }
+
+        schedule.RunStage(Stage.Update, world);
+        schedule.RunStage(Stage.Render, world);
+    }
+
+    Console.WriteLine("Window closed.");
+}
+else
+{
+    for (var frame = 0; frame < frames; frame++)
+        schedule.RunStage(Stage.Update, world);
+
+    Console.WriteLine($"Ran {frames} update frame(s).");
+}
 
 if (dumpPath is not null)
 {
@@ -123,5 +197,9 @@ return 0;
 static void PrintUsage()
 {
     Console.Error.WriteLine(
-        "Usage: engine run --headless --plugins <dir> --project <project.json> --frames <n> [--dump <path>]");
+        """
+        Usage:
+          engine run --headless --plugins <dir> --project <project.json> --frames <n> [--dump <path>]
+          engine run --windowed --plugins <dir> --project <project.json> [--dump <path>]
+        """);
 }

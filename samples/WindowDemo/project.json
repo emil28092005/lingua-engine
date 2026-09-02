@@ -1,0 +1,8 @@
+{
+  "engineVersion": "^0.1",
+  "plugins": [
+    { "id": "engine.windowing" },
+    { "id": "engine.render" }
+  ],
+  "pluginPaths": []
+}

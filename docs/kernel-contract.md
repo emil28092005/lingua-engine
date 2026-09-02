@@ -200,7 +200,7 @@ public sealed class RenderPlugin : IPlugin
     public void Configure(IPluginContext ctx)
     {
         // control plane: hand out an interface, take one in
-        var window = ctx.Services.Require<IWindow>();
+        var window = ctx.Services.Require<IEngineWindow>();
         ctx.Services.Provide<IRenderer>(new VulkanRenderer(window));
 
         // data plane: the system queries GameObjects by component type.

@@ -33,9 +33,15 @@ enforcement), `PluginHost` (two-ALC load/unload, verified leak-free over
 200 cycles), and a headless CLI (`engine run --headless ... --dump`) — all
 exist and are tested. The full agent loop from
 [`docs/kernel-contract.md#7`](docs/kernel-contract.md#7-written-by-an-agent-not-a-human)
-runs end to end. No window, no rendering, no physics yet — see the build
-order (M0–M4) in [`docs/kernel-contract.md`](docs/kernel-contract.md) for
-what's next.
+runs end to end.
+
+**M1 in progress.** `engine.windowing` and a minimal `engine.render` (clear
+color, no mesh yet) exist over Silk.NET, and the milestone's actual claim —
+edit a plugin's code, rebuild just it, reload it while a real window stays
+open, see the change with no app restart — is proven, by hand, against a
+live GL context. `engine.input` and an actual drawn triangle (vs. a clear
+color) are still open. No physics yet — see the build order (M0–M4) in
+[`docs/kernel-contract.md`](docs/kernel-contract.md) for what's next.
 
 Design and implementation are argued over in the same place: the doc is
 still the thing to disagree with before code changes to match.

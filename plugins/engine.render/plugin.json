@@ -1,0 +1,9 @@
+{
+  "id":        "engine.render",
+  "version":   "0.1.0",
+  "assembly":  "Engine.Render.dll",
+  "dependsOn": {
+    "engine.windowing": "^0.1"
+  },
+  "reloadable": true
+}
