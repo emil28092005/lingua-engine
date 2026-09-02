@@ -116,20 +116,32 @@ and is unit-tested on its own — including the case a screenshot can't
 easily catch, dragging an object parented under a non-uniformly-scaled
 parent.
 
-**M4 in progress.** `engine.physics` wraps Box3D and `engine.audio` wraps
-miniaudio, both through a deliberately narrow C shim — neither library's
-own config structs (large, with function pointers and, for Box3D, at
-least one type that "cannot be directly copied") cross the P/Invoke
-boundary, only plain scalars and handles do. `samples/PhysicsDemo` ties
-physics, audio, input, and rendering together in one running project with
-`engine.editor` deliberately left out of its `project.json` — the
-shippable configuration, not the dev one. `.github/workflows/build.yml`
-builds and tests both native shims and the full solution on real
-`ubuntu-latest` and `windows-latest` runners, since nothing on a single
-Linux dev machine can otherwise verify the Windows half of M4's own "done
-when." Still open: the build pipeline hasn't actually run on GitHub yet
-(pending a `workflow` OAuth scope grant), and M4's "one small game"
-target is the physics demo so far, not yet a scored 20-minute one.
+**M4 in progress — the "done when" is met.** `engine.physics` wraps Box3D
+and `engine.audio` wraps miniaudio, both through a deliberately narrow C
+shim — neither library's own config structs (large, with function
+pointers and, for Box3D, at least one type that "cannot be directly
+copied") cross the P/Invoke boundary, only plain scalars and handles do.
+`samples/PhysicsDemo` ties physics, audio, input, and rendering together
+in one running project with `engine.editor` deliberately left out of its
+`project.json` — the shippable configuration, not the dev one.
+`.github/workflows/build.yml` builds both native shims from source, runs
+the full test suite, and headless-verifies real physics end to end, on
+real `ubuntu-latest` and `windows-latest` runners — the only way to check
+the Windows half at all from a single Linux dev machine. **Both platforms
+are green.** The first real run caught two things no amount of local
+testing could have: the linux-x64 `.so` committed for local dev
+convenience, built against this dev machine's own newer glibc, didn't
+load on `ubuntu-latest`'s (CI now rebuilds it fresh every run instead of
+trusting a locally-built binary); and `--headless` doesn't stop a loaded
+`engine.windowing`/`engine.render` from creating a real GL context
+regardless, which fails outright on a GPU-less runner (CI's verification
+step now stages a separate, `engine.physics`-only build with no window
+plugin at all — `engine.render`'s own correctness is proven by real
+screenshots on a real desktop instead, not something a headless runner
+could check anyway).
+
+Still open for M4: the "one small game" target is the physics demo so
+far, not yet a scored 20-minute one.
 
 See the build order (M0–M4) in
 [`docs/kernel-contract.md`](docs/kernel-contract.md) for the rest.
