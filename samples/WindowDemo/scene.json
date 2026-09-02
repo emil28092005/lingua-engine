@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Quad",
+    "transform": {
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0, 1],
+      "scale": [2, 2, 1]
+    },
+    "components": [
+      { "type": "Engine.Render.Contracts.QuadRenderer, Engine.Render.Contracts", "data": {} }
+    ],
+    "children": []
+  }
+]

@@ -1,3 +1,4 @@
+using System.Numerics;
 using Engine.Assets.Contracts;
 using Engine.Kernel.Diagnostics;
 using Engine.Kernel.Plugins;
@@ -10,15 +11,26 @@ using Silk.NET.OpenGL;
 namespace Engine.Render;
 
 /// <summary>
-/// M2's render pipeline: a textured quad, drawn every Render stage. See M2
-/// in docs/kernel-contract.md §8.
+/// M3's render pipeline: a real perspective camera, drawing every
+/// GameObject with a QuadRenderer at its own WorldMatrix — upgraded from
+/// M2's single hardcoded NDC-space quad specifically because gizmos need
+/// real 3D geometry and a real camera to mean anything (a handle dragged
+/// in screen space has to map onto an actual 3D axis). See M3 in
+/// docs/kernel-contract.md §8.
 ///
-/// This is the actual "done when": swap TexturePath's file on disk and the
-/// quad's texture changes with no app restart — engine.assets watches the
-/// file and publishes TextureReloaded; this plugin subscribes and
-/// re-uploads to the same GL texture handle. Verified by hand against a
-/// real window and a live GL context, via IScreenCapture — no external
-/// image library; see the note on PngWriter for why.
+/// GameObject.WorldMatrix and this plugin's own matrices are both
+/// System.Numerics.Matrix4x4, which is row-vector (v' = v * M, and
+/// composition reads left to right — see WorldMatrix's own doc comment).
+/// The shaders below use the same convention deliberately
+/// (`vec4(aPosition, 1.0) * uModel * uView * uProjection`), not GLSL's
+/// more common column-vector order. That's also why SetMatrix uploads
+/// with `transpose: true` — System.Numerics stores a matrix's first row
+/// as its first four floats, but glUniformMatrix4fv with transpose=false
+/// reads that same layout as the first *column* instead; asking GL to
+/// transpose is what makes the bytes mean what C# already computed them
+/// to mean. Confirmed empirically, not just reasoned through: with
+/// transpose=false the quad rendered as a blank screen — no error, no
+/// crash, just wrong — and flipping the one flag was the entire fix.
 ///
 /// engine.windowing alone produces a window that never becomes visible on
 /// Wayland — unlike X11, a Wayland surface with no committed buffer simply
@@ -36,19 +48,23 @@ namespace Engine.Render;
 public sealed class RenderPlugin : IPlugin
 {
     // There's no material/asset-reference component yet (that's real
-    // content-authoring work, M3+ territory) — hardcoded the same way
+    // content-authoring work, M4+ territory) — hardcoded the same way
     // TriangleColor was hardcoded before textures existed at all.
     private const string TexturePath = "assets/texture.png";
 
     private const string VertexShaderSource = """
         #version 330 core
-        layout (location = 0) in vec2 aPosition;
+        layout (location = 0) in vec3 aPosition;
         layout (location = 1) in vec2 aUv;
         out vec2 vUv;
 
+        uniform mat4 uModel;
+        uniform mat4 uView;
+        uniform mat4 uProjection;
+
         void main()
         {
-            gl_Position = vec4(aPosition, 0.0, 1.0);
+            gl_Position = vec4(aPosition, 1.0) * uModel * uView * uProjection;
             vUv = aUv;
         }
         """;
@@ -65,24 +81,30 @@ public sealed class RenderPlugin : IPlugin
         }
         """;
 
+    // Unit quad (1x1 world units before Transform.LocalScale), centered
+    // at its own origin, in the XY plane facing +Z.
     private static readonly float[] Vertices =
     [
-        // position       uv
-        -0.6f,  0.6f,     0f, 1f,
-        -0.6f, -0.6f,     0f, 0f,
-         0.6f, -0.6f,     1f, 0f,
+        // position            uv
+        -0.5f,  0.5f, 0f,      0f, 1f,
+        -0.5f, -0.5f, 0f,      0f, 0f,
+         0.5f, -0.5f, 0f,      1f, 0f,
 
-        -0.6f,  0.6f,     0f, 1f,
-         0.6f, -0.6f,     1f, 0f,
-         0.6f,  0.6f,     1f, 1f,
+        -0.5f,  0.5f, 0f,      0f, 1f,
+         0.5f, -0.5f, 0f,      1f, 0f,
+         0.5f,  0.5f, 0f,      1f, 1f,
     ];
 
     private GL? _gl;
     private IEngineWindow? _window;
+    private CameraService? _camera;
     private uint _vao;
     private uint _vbo;
     private uint _program;
     private uint _texture;
+    private int _modelLocation;
+    private int _viewLocation;
+    private int _projectionLocation;
     private Action<TextureReloaded>? _onTextureReloaded;
     private ILogger? _log;
 
@@ -100,7 +122,13 @@ public sealed class RenderPlugin : IPlugin
         // failure mode here, not a hypothetical one.
         _window.Native.GLContext.SwapInterval(0);
 
+        _camera = new CameraService(_window);
+        ctx.Services.Provide<ICameraService>(_camera);
+
         _program = LinkProgram(_gl, VertexShaderSource, FragmentShaderSource);
+        _modelLocation = _gl.GetUniformLocation(_program, "uModel");
+        _viewLocation = _gl.GetUniformLocation(_program, "uView");
+        _projectionLocation = _gl.GetUniformLocation(_program, "uProjection");
 
         _vao = _gl.GenVertexArray();
         _gl.BindVertexArray(_vao);
@@ -109,13 +137,14 @@ public sealed class RenderPlugin : IPlugin
         _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
         _gl.BufferData<float>(BufferTargetARB.ArrayBuffer, Vertices, BufferUsageARB.StaticDraw);
 
-        const uint stride = 4 * sizeof(float);
-        _gl.VertexAttribPointer(0, 2, VertexAttribPointerType.Float, false, stride, (void*)0);
+        const uint stride = 5 * sizeof(float);
+        _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, stride, (void*)0);
         _gl.EnableVertexAttribArray(0);
-        _gl.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, stride, (void*)(2 * sizeof(float)));
+        _gl.VertexAttribPointer(1, 2, VertexAttribPointerType.Float, false, stride, (void*)(3 * sizeof(float)));
         _gl.EnableVertexAttribArray(1);
 
         _gl.BindVertexArray(0);
+        _gl.Enable(EnableCap.DepthTest);
 
         var assets = ctx.Services.Require<IAssetService>();
         var initial = assets.LoadTexture(TexturePath);
@@ -130,8 +159,8 @@ public sealed class RenderPlugin : IPlugin
         ctx.Events.Subscribe(_onTextureReloaded);
 
         ctx.Services.Provide<IScreenCapture>(new GlScreenCapture(_gl, _window));
-        ctx.Schedule.Add(Stage.Render, Draw);
-        ctx.Log.Info("GL context created, textured quad ready");
+        ctx.Schedule.Add(Stage.Render, Draw).Reads<QuadRenderer>();
+        ctx.Log.Info("GL context created, 3D quad pipeline ready");
     }
 
     public void Shutdown(IPluginContext ctx)
@@ -139,6 +168,7 @@ public sealed class RenderPlugin : IPlugin
         ctx.Schedule.RemoveAllFrom("engine.render");
         ctx.Events.RemoveAllFrom("engine.render");
         ctx.Services.Revoke<IScreenCapture>();
+        ctx.Services.Revoke<ICameraService>();
 
         if (_gl is not null)
         {
@@ -151,6 +181,7 @@ public sealed class RenderPlugin : IPlugin
 
         _gl = null;
         _window = null;
+        _camera = null;
         _onTextureReloaded = null;
         _log = null;
     }
@@ -185,19 +216,32 @@ public sealed class RenderPlugin : IPlugin
             _log?.Warn($"GL error after texture upload: {error}");
     }
 
-    private void Draw(IWorld world)
+    private unsafe void Draw(IWorld world)
     {
         _gl!.ClearColor(0.05f, 0.05f, 0.08f, 1f);
-        _gl.Clear(ClearBufferMask.ColorBufferBit);
+        _gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
         _gl.UseProgram(_program);
         _gl.ActiveTexture(TextureUnit.Texture0);
         _gl.BindTexture(TextureTarget.Texture2D, _texture);
         _gl.BindVertexArray(_vao);
-        _gl.DrawArrays(PrimitiveType.Triangles, 0, 6);
+
+        var view = _camera!.View;
+        var projection = _camera.Projection;
+        SetMatrix(_viewLocation, view);
+        SetMatrix(_projectionLocation, projection);
+
+        foreach (var go in world.Query<QuadRenderer>())
+        {
+            SetMatrix(_modelLocation, go.WorldMatrix);
+            _gl.DrawArrays(PrimitiveType.Triangles, 0, 6);
+        }
 
         _window!.Native.GLContext!.SwapBuffers();
     }
+
+    private unsafe void SetMatrix(int location, Matrix4x4 matrix) =>
+        _gl!.UniformMatrix4(location, 1, true, (float*)&matrix);
 
     private static uint LinkProgram(GL gl, string vertexSource, string fragmentSource)
     {
