@@ -270,9 +270,19 @@ if (windowed)
         // before this plugin existed. With one loaded, Update only runs
         // while actually Playing: Edit mode still renders the scene every
         // frame (so the editor UI stays responsive and the view isn't
-        // frozen mid-edit), it just never ticks it.
+        // frozen mid-edit), it just never ticks it. FixedUpdate is gated
+        // the same way and for the same reason — physics shouldn't step
+        // while Edit mode has the world frozen — and only accumulates time
+        // while playing, so Play doesn't open with a catch-up burst of
+        // steps for however long Edit mode had been sitting idle.
         if (playMode is null || playMode.IsPlaying)
+        {
+            var fixedSteps = time.ConsumeFixedSteps();
+            for (var step = 0; step < fixedSteps; step++)
+                schedule.RunStage(Stage.FixedUpdate, world);
+
             schedule.RunStage(Stage.Update, world);
+        }
 
         schedule.RunStage(Stage.Render, world);
         schedule.RunStage(Stage.Present, world);
@@ -313,6 +323,11 @@ else
     for (var frame = 0; frame < frames; frame++)
     {
         time.Tick(headlessDeltaTime);
+
+        var fixedSteps = time.ConsumeFixedSteps();
+        for (var step = 0; step < fixedSteps; step++)
+            schedule.RunStage(Stage.FixedUpdate, world);
+
         schedule.RunStage(Stage.Update, world);
     }
 
