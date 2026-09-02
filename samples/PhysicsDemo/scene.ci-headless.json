@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Ground",
+    "transform": { "position": [0, 0, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1] },
+    "components": [
+      { "type": "Engine.Physics.Contracts.Rigidbody, Engine.Physics.Contracts", "data": { "Type": 0, "Friction": 0.6, "Restitution": 0.3 } },
+      { "type": "Engine.Physics.Contracts.BoxCollider, Engine.Physics.Contracts", "data": { "HalfExtents": { "X": 4, "Y": 0.5, "Z": 4 } } }
+    ],
+    "children": []
+  },
+  {
+    "name": "DemoBox",
+    "transform": { "position": [0, 3, 0], "rotation": [0, 0, 0, 1], "scale": [1, 1, 1] },
+    "components": [
+      { "type": "Engine.Physics.Contracts.Rigidbody, Engine.Physics.Contracts", "data": { "Type": 2, "Friction": 0.6, "Restitution": 0.3 } },
+      { "type": "Engine.Physics.Contracts.BoxCollider, Engine.Physics.Contracts", "data": {} }
+    ],
+    "children": []
+  }
+]

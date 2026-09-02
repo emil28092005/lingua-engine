@@ -1,0 +1,7 @@
+{
+  "engineVersion": "^0.1",
+  "plugins": [
+    { "id": "engine.physics" }
+  ],
+  "pluginPaths": []
+}

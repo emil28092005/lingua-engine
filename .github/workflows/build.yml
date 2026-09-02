@@ -42,21 +42,26 @@ jobs:
           cmake -S native/audio-native -B native/audio-native/build -DCMAKE_BUILD_TYPE=Release
           cmake --build native/audio-native/build --config Release
 
-      # linux-x64's .so is committed (built and verified on the dev
-      # machine); win-x64's .dll can only ever be produced here, since
-      # nothing else in this project can build or run one to check it —
-      # landing it at exactly the path Engine.Physics.csproj/Engine.Audio.
-      # csproj's win-x64 Content item expects.
-      - name: Place win-x64 native libraries
-        if: matrix.rid == 'win-x64'
+      # win-x64's .dll can only ever be produced here — nothing else in
+      # this project can build or run one to check it. linux-x64's .so
+      # IS also committed (for scripts/run-sample.sh's convenience on a
+      # dev machine), but CI rebuilds and overwrites it fresh too, every
+      # run: a real failure found by this exact workflow, not a
+      # hypothetical one — the committed .so, built locally against a
+      # newer glibc than ubuntu-latest ships, loaded fine here and threw
+      # DllNotFoundException on the runner. Only a binary built on the
+      # actual target platform is trustworthy there.
+      - name: Place native libraries
         shell: bash
         run: |
-          mkdir -p plugins/engine.physics/Engine.Physics/native/win-x64
-          mkdir -p plugins/engine.audio/Engine.Audio/native/win-x64
-          find native/physics-native/build -iname "lingua_physics.dll" -exec cp {} plugins/engine.physics/Engine.Physics/native/win-x64/lingua_physics.dll \;
-          find native/audio-native/build -iname "lingua_audio.dll" -exec cp {} plugins/engine.audio/Engine.Audio/native/win-x64/lingua_audio.dll \;
-          test -f plugins/engine.physics/Engine.Physics/native/win-x64/lingua_physics.dll
-          test -f plugins/engine.audio/Engine.Audio/native/win-x64/lingua_audio.dll
+          mkdir -p "plugins/engine.physics/Engine.Physics/native/${{ matrix.rid }}"
+          mkdir -p "plugins/engine.audio/Engine.Audio/native/${{ matrix.rid }}"
+          find native/physics-native/build -iname "liblingua_physics.so" -o -iname "lingua_physics.dll" \
+            | xargs -I{} cp {} "plugins/engine.physics/Engine.Physics/native/${{ matrix.rid }}/"
+          find native/audio-native/build -iname "liblingua_audio.so" -o -iname "lingua_audio.dll" \
+            | xargs -I{} cp {} "plugins/engine.audio/Engine.Audio/native/${{ matrix.rid }}/"
+          ls "plugins/engine.physics/Engine.Physics/native/${{ matrix.rid }}"
+          ls "plugins/engine.audio/Engine.Audio/native/${{ matrix.rid }}"
 
       - name: Build
         run: dotnet build LinguaEngine.sln -c Release
@@ -94,7 +99,32 @@ jobs:
           cp -r samples/PhysicsDemo/assets "$DIST/samples/PhysicsDemo/assets"
           cp samples/PhysicsDemo/project.json samples/PhysicsDemo/scene.json "$DIST/samples/PhysicsDemo/"
 
-      - name: Verify the shippable build actually runs (headless, real physics + real scene load)
+      # A deliberately minimal, engine.windowing/engine.render-free stage,
+      # separate from the full one above: found the hard way that --headless
+      # only controls whether Engine.Host's own loop pumps a window — it
+      # does nothing to stop a *loaded* engine.windowing/engine.render from
+      # creating a real window and GL context regardless, which the full
+      # PhysicsDemo project always does. That's fine on a real desktop; on
+      # windows-latest's GPU-less runner it's "WGL: The driver does not
+      # appear to support OpenGL," failing before physics ever got to run.
+      # engine.physics needs no display at all, so this checks only that.
+      - name: Stage a minimal headless-safe build for verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERIFY="verify/${{ matrix.rid }}"
+          mkdir -p "$VERIFY/plugins/engine.physics"
+          cp -r plugins/engine.physics/Engine.Physics/bin/Release/net9.0/. "$VERIFY/plugins/engine.physics/"
+          cp plugins/engine.physics/plugin.json "$VERIFY/plugins/engine.physics/"
+
+          mkdir -p "$VERIFY/engine"
+          cp -r src/Engine.Host/bin/Release/net9.0/. "$VERIFY/engine/"
+
+          mkdir -p "$VERIFY/samples/PhysicsDemo"
+          cp samples/PhysicsDemo/project.ci-headless.json "$VERIFY/samples/PhysicsDemo/project.json"
+          cp samples/PhysicsDemo/scene.ci-headless.json "$VERIFY/samples/PhysicsDemo/scene.json"
+
+      - name: Verify the shippable build actually runs (headless, real physics + real scene load, real P/Invoke)
         shell: bash
         run: |
           set -euo pipefail
@@ -102,10 +132,10 @@ jobs:
           # PluginHost.Load uses) throws on a relative one — found by
           # hand running this exact staging locally before trusting it to
           # a workflow run at all.
-          DIST="$(pwd)/dist/${{ matrix.rid }}"
-          cd "$DIST/samples/PhysicsDemo"
-          dotnet "$DIST/engine/Engine.Host.dll" run --headless \
-            --plugins "$DIST/plugins" --project project.json --scene scene.json \
+          VERIFY="$(pwd)/verify/${{ matrix.rid }}"
+          cd "$VERIFY/samples/PhysicsDemo"
+          dotnet "$VERIFY/engine/Engine.Host.dll" run --headless \
+            --plugins "$VERIFY/plugins" --project project.json --scene scene.json \
             --frames 200 --dump dump.json
           cat dump.json
           python3 -c "
