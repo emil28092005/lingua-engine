@@ -1,0 +1,10 @@
+{
+  "id":        "engine.input",
+  "version":   "0.1.0",
+  "contracts": "Engine.Input.Contracts.dll",
+  "assembly":  "Engine.Input.dll",
+  "dependsOn": {
+    "engine.windowing": "^0.1"
+  },
+  "reloadable": true
+}

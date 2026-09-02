@@ -35,12 +35,19 @@ exist and are tested. The full agent loop from
 [`docs/kernel-contract.md#7`](docs/kernel-contract.md#7-written-by-an-agent-not-a-human)
 runs end to end.
 
-**M1 in progress.** `engine.windowing` and a minimal `engine.render` (clear
-color, no mesh yet) exist over Silk.NET, and the milestone's actual claim —
-edit a plugin's code, rebuild just it, reload it while a real window stays
-open, see the change with no app restart — is proven, by hand, against a
-live GL context. `engine.input` and an actual drawn triangle (vs. a clear
-color) are still open. No physics yet — see the build order (M0–M4) in
+**M1 done.** `engine.windowing`, `engine.render` (a real shader-drawn
+triangle, not just a clear color), and `engine.input` all exist over
+Silk.NET. The milestone's actual claim — edit a plugin's code, rebuild just
+it, reload it while a real window stays open, see the change with no app
+restart — is proven against a live GL context: two PNGs of the *same*
+running window, before and after a live reload, orange triangle then green,
+same process the whole time. `IScreenCapture` (`engine.render`) reads the
+frame back from the GPU and writes it to a file with a hand-rolled PNG
+encoder — no `SixLabors.ImageSharp` (its license isn't MIT/Apache) and no
+desktop screenshot tool, so this is checkable without a screen at all,
+exactly the introspection story `docs/kernel-contract.md#7` argues for.
+
+No physics yet — see the build order (M0–M4) in
 [`docs/kernel-contract.md`](docs/kernel-contract.md) for what's next.
 
 Design and implementation are argued over in the same place: the doc is

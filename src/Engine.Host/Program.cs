@@ -30,6 +30,7 @@ using Engine.Kernel.Plugins;
 using Engine.Kernel.Scheduling;
 using Engine.Kernel.Services;
 using Engine.Kernel.World;
+using Engine.Render.Contracts;
 using Engine.Windowing.Contracts;
 
 if (args.Length == 0)
@@ -53,7 +54,9 @@ if (args[0] != "run")
 string? projectPath = null;
 string? pluginsPath = null;
 string? dumpPath = null;
+string? screenshotPath = null;
 var frames = 0;
+var screenshotAfterFrames = 1;
 var headless = false;
 var windowed = false;
 
@@ -78,6 +81,12 @@ for (var i = 1; i < args.Length; i++)
             break;
         case "--dump" when i + 1 < args.Length:
             dumpPath = args[++i];
+            break;
+        case "--screenshot" when i + 1 < args.Length:
+            screenshotPath = args[++i];
+            break;
+        case "--screenshot-after-frames" when i + 1 < args.Length:
+            screenshotAfterFrames = int.Parse(args[++i]);
             break;
         case "--scene":
         case "--assert":
@@ -131,49 +140,104 @@ if (windowed)
         return 1;
     }
 
-    Console.WriteLine("Window open — close it to exit. Type 'r <plugin-id>' + Enter to reload a plugin live.");
+    Console.WriteLine(
+        """
+        Window open — close it to exit. Commands (type + Enter):
+          r <plugin-id>       reload that plugin live
+          screenshot <path>   save the current frame to a PNG (needs a plugin providing IScreenCapture)
+        """);
 
     // Line-based, not Console.ReadKey: KeyAvailable needs a real terminal
     // in raw mode and throws or misbehaves on piped/redirected stdin. A
     // background reader plus a thread-safe queue works either way and
     // costs nothing on the render loop's own thread.
-    var reloadQueue = new System.Collections.Concurrent.ConcurrentQueue<string>();
+    var commandQueue = new System.Collections.Concurrent.ConcurrentQueue<(string Command, string Argument)>();
     _ = Task.Run(() =>
     {
         string? line;
         while ((line = Console.ReadLine()) is not null)
         {
             var parts = line.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-            if (parts is ["r", var pluginId])
-                reloadQueue.Enqueue(pluginId);
+            if (parts is [var command, var argument])
+                commandQueue.Enqueue((command, argument));
         }
     });
 
+    var frameCount = 0;
+
     while (!window!.IsClosing)
     {
+        frameCount++;
         window.Native.DoEvents();
 
         if (window.IsClosing)
             break;
 
-        while (reloadQueue.TryDequeue(out var pluginId))
+        // "screenshot" waits until after this frame's Render stage below —
+        // captured now, it would grab whatever the *previous* frame left
+        // in the framebuffer, not what this iteration is about to draw.
+        var pendingScreenshots = new List<string>();
+
+        // --screenshot is the non-interactive path: capture once, then
+        // exit, so a script can fire-and-forget instead of managing a
+        // stdin pipe into a long-running process.
+        if (screenshotPath is not null && frameCount == screenshotAfterFrames)
+            pendingScreenshots.Add(screenshotPath);
+
+        while (commandQueue.TryDequeue(out var cmd))
         {
-            var pluginDirectory = Path.Combine(pluginsPath, pluginId);
-            Console.WriteLine($"Reloading '{pluginId}'...");
-            try
+            switch (cmd.Command)
             {
-                host.Unload(pluginId);
-                host.Load(pluginDirectory);
-                Console.WriteLine($"Reloaded '{pluginId}'. World state and the window were untouched.");
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Failed to reload '{pluginId}': {ex.Message}");
+                case "r":
+                    var pluginDirectory = Path.Combine(pluginsPath, cmd.Argument);
+                    Console.WriteLine($"Reloading '{cmd.Argument}'...");
+                    try
+                    {
+                        host.Unload(cmd.Argument);
+                        host.Load(pluginDirectory);
+                        Console.WriteLine($"Reloaded '{cmd.Argument}'. World state and the window were untouched.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Failed to reload '{cmd.Argument}': {ex.Message}");
+                    }
+
+                    break;
+
+                case "screenshot":
+                    pendingScreenshots.Add(cmd.Argument);
+                    break;
+
+                default:
+                    Console.Error.WriteLine($"Unknown command: '{cmd.Command}'");
+                    break;
             }
         }
 
         schedule.RunStage(Stage.Update, world);
         schedule.RunStage(Stage.Render, world);
+
+        foreach (var path in pendingScreenshots)
+        {
+            if (!services.TryRequire<IScreenCapture>(out var capture))
+            {
+                Console.Error.WriteLine("No loaded plugin provides IScreenCapture (e.g. engine.render).");
+                continue;
+            }
+
+            try
+            {
+                capture!.CaptureToFile(path);
+                Console.WriteLine($"Wrote screenshot to '{path}'.");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Failed to capture screenshot: {ex.Message}");
+            }
+        }
+
+        if (screenshotPath is not null && frameCount == screenshotAfterFrames)
+            break;
     }
 
     Console.WriteLine("Window closed.");
@@ -201,5 +265,11 @@ static void PrintUsage()
         Usage:
           engine run --headless --plugins <dir> --project <project.json> --frames <n> [--dump <path>]
           engine run --windowed --plugins <dir> --project <project.json> [--dump <path>]
+                      [--screenshot <path> [--screenshot-after-frames <n>]]
+
+        --screenshot captures once, after <n> frames (default 1), then exits
+        — for scripts and agents; no interactive terminal needed. To keep
+        the window open and drive it interactively instead, type commands
+        into stdin while it runs: 'r <plugin-id>' or 'screenshot <path>'.
         """);
 }

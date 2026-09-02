@@ -2,6 +2,14 @@
 
   <PropertyGroup>
     <EnableDynamicLoading>true</EnableDynamicLoading>
+
+    <!-- Narrow, deliberate exception to Directory.Build.props' default:
+         Silk.NET.OpenGL's VertexAttribPointer takes a raw offset pointer,
+         and that's native graphics interop, not the kind of kernel data
+         structure docs/kernel-contract.md §7 was written to keep unsafe
+         out of. Confined to Configure() — see the `unsafe` on that one
+         method, not this whole file. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\src\Engine.Kernel\Engine.Kernel.csproj" />
     <ProjectReference Include="..\..\engine.windowing\Engine.Windowing.Contracts\Engine.Windowing.Contracts.csproj" />
+    <ProjectReference Include="..\Engine.Render.Contracts\Engine.Render.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

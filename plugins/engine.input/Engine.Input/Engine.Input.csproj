@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Silk.NET.Input" Version="2.23.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Engine.Kernel\Engine.Kernel.csproj" />
+    <ProjectReference Include="..\Engine.Input.Contracts\Engine.Input.Contracts.csproj" />
+    <ProjectReference Include="..\..\engine.windowing\Engine.Windowing.Contracts\Engine.Windowing.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

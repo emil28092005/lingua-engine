@@ -29,6 +29,16 @@ public sealed class PluginHost(IWorld world, IServiceRegistry services, Schedule
         PropertyNameCaseInsensitive = true,
     };
 
+    // Shared across every PluginHost in the process, not per-instance:
+    // AssemblyLoadContext.Default.Resolving is itself process-wide, and an
+    // instance-bound handler on it would keep that PluginHost reachable
+    // forever — exactly the kind of leak this whole architecture exists to
+    // avoid, just aimed at a host instead of a plugin ALC. See
+    // EnsureDefaultResolvingHooked.
+    private static readonly List<AssemblyDependencyResolver> ContractResolvers = [];
+    private static readonly Lock ContractResolversLock = new();
+    private static bool _defaultResolvingHooked;
+
     private readonly Dictionary<string, LoadedPlugin> _loaded = [];
 
     /// <summary>
@@ -147,6 +157,26 @@ public sealed class PluginHost(IWorld world, IServiceRegistry services, Schedule
         return null;
     }
 
+    /// <summary>
+    /// Loading a Contracts assembly straight into the Default ALC says
+    /// nothing about how ITS OWN dependencies (beyond Engine.Kernel) get
+    /// resolved — unlike a plugin's implementation, which always gets a
+    /// PluginLoadContext with a real AssemblyDependencyResolver behind it.
+    /// This went unnoticed for a while: engine.windowing's and
+    /// engine.render's Contracts both depend on Silk.NET packages, but
+    /// Engine.Host happens to reference those same Contracts projects
+    /// directly (to drive the windowed loop and screenshot capture — see
+    /// Program.cs), so their transitive dependencies were already sitting
+    /// in Engine.Host's own output directory and got found by luck via
+    /// normal probing. engine.input's Contracts has no such lucky
+    /// coincidence: Engine.Host has no reason to reference it, so its
+    /// Silk.NET.Input dependency wasn't anywhere the default resolution
+    /// order would look — a real FileNotFoundException, not a hypothetical
+    /// one. Hooking Default.Resolving with a resolver built against each
+    /// loaded Contracts path fixes it for real, rather than for whichever
+    /// Contracts assemblies happen to also be referenced by whatever's
+    /// hosting the engine this time.
+    /// </summary>
     private static void LoadContractsIntoDefaultAlc(string pluginDirectory, PluginManifest manifest)
     {
         if (manifest.Contracts is null)
@@ -158,8 +188,38 @@ public sealed class PluginHost(IWorld world, IServiceRegistry services, Schedule
         var alreadyLoaded = AssemblyLoadContext.Default.Assemblies
             .Any(a => a.GetName().Name == name);
 
-        if (!alreadyLoaded)
-            AssemblyLoadContext.Default.LoadFromAssemblyPath(contractsPath);
+        if (alreadyLoaded)
+            return;
+
+        EnsureDefaultResolvingHooked();
+
+        lock (ContractResolversLock)
+            ContractResolvers.Add(new AssemblyDependencyResolver(contractsPath));
+
+        AssemblyLoadContext.Default.LoadFromAssemblyPath(contractsPath);
+    }
+
+    private static void EnsureDefaultResolvingHooked()
+    {
+        if (_defaultResolvingHooked)
+            return;
+
+        _defaultResolvingHooked = true;
+
+        AssemblyLoadContext.Default.Resolving += (_, name) =>
+        {
+            lock (ContractResolversLock)
+            {
+                foreach (var resolver in ContractResolvers)
+                {
+                    var path = resolver.ResolveAssemblyToPath(name);
+                    if (path is not null)
+                        return AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
+                }
+            }
+
+            return null;
+        };
     }
 
     private static Type FindPluginType(Assembly assembly, string pluginId)
