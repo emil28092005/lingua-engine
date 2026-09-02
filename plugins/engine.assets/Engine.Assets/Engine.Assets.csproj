@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\src\Engine.Kernel\Engine.Kernel.csproj" />
+    <ProjectReference Include="..\Engine.Assets.Contracts\Engine.Assets.Contracts.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+</Project>

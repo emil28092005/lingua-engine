@@ -2,6 +2,7 @@
   "engineVersion": "^0.1",
   "plugins": [
     { "id": "engine.windowing" },
+    { "id": "engine.assets" },
     { "id": "engine.render" },
     { "id": "engine.input" }
   ],

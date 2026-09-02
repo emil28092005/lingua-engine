@@ -20,6 +20,16 @@ public sealed class WindowingPlugin : IPlugin
         {
             Size = new(1280, 720),
             Title = "Lingua Engine",
+
+            // VSync waits for the compositor's frame callback before a
+            // SwapBuffers call returns — found the hard way: under a
+            // nested/off-screen-ish Wayland session, that callback can
+            // simply never arrive, and the *second* frame's SwapBuffers
+            // (the first has nothing to wait on yet) blocks the whole
+            // process forever. Nothing here needs frame pacing yet — no
+            // input-driven gameplay, no animation — so there's no reason
+            // to pay for it before it's needed.
+            VSync = false,
         };
 
         _window = Window.Create(options);

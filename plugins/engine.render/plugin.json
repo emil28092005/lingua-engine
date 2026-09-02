@@ -4,7 +4,8 @@
   "contracts": "Engine.Render.Contracts.dll",
   "assembly":  "Engine.Render.dll",
   "dependsOn": {
-    "engine.windowing": "^0.1"
+    "engine.windowing": "^0.1",
+    "engine.assets": "^0.1"
   },
   "reloadable": true
 }

@@ -1,0 +1,8 @@
+{
+  "id":        "engine.assets",
+  "version":   "0.1.0",
+  "contracts": "Engine.Assets.Contracts.dll",
+  "assembly":  "Engine.Assets.dll",
+  "dependsOn": {},
+  "reloadable": true
+}

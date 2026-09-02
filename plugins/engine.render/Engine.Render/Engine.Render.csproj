@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\..\src\Engine.Kernel\Engine.Kernel.csproj" />
     <ProjectReference Include="..\..\engine.windowing\Engine.Windowing.Contracts\Engine.Windowing.Contracts.csproj" />
     <ProjectReference Include="..\Engine.Render.Contracts\Engine.Render.Contracts.csproj" />
+    <ProjectReference Include="..\..\engine.assets\Engine.Assets.Contracts\Engine.Assets.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

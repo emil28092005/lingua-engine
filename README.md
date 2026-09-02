@@ -60,6 +60,28 @@ both shipped; `sandbox.echo` subscribes to `PluginLoaded` for real, so the
 (the fast path) is deliberately still open, but with a concrete trigger
 condition instead of a deadline, not left vague.
 
+**M2 done.** `World` actually saves and loads now (`SceneFormat`,
+replacing the old introspection-only `WorldDumper` — there was never a
+real reason for "what an agent reads to check a frame" and "what a scene
+file is" to be different shapes). Verified beyond round-trip unit tests:
+two separate CLI runs against the same scene file, second one picking up
+right where the first left off, component state and all.
+
+`engine.assets` hot-reloads textures from disk — the actual "done when"
+for M2. `engine.render`'s triangle became a textured quad; swap the PNG
+file on disk while the app is running and the picture changes with no
+restart, no manual reload command, just a `FileSystemWatcher` noticing
+and `IEventBus` carrying `TextureReloaded` from `engine.assets` to
+`engine.render`. Verified the same honest way as M1 — real screenshots,
+before and after, same running process — plus two things caught and fixed
+along the way rather than papered over: a PNG decoder was needed (no
+`SixLabors.ImageSharp`, same licensing reason as the encoder — it's a
+second, independent implementation of the format, tested against all five
+PNG filter types, not just the one this codebase's own writer produces),
+and a real hang, not a hypothetical one: `SwapBuffers` blocking forever
+once VSync had nothing to wait on — reproduced by locking the screen,
+fixed by turning VSync off, since nothing here needs frame pacing yet.
+
 No physics yet — see the build order (M0–M4) in
 [`docs/kernel-contract.md`](docs/kernel-contract.md) for what's next.
 
