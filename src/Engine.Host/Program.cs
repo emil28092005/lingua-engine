@@ -28,6 +28,7 @@
 //              referencing an ALC; nothing has ever failed to unload in
 //              testing, so there's nothing to build this against yet.
 
+using Engine.Editor.Contracts;
 using Engine.Kernel.Diagnostics;
 using Engine.Kernel.Events;
 using Engine.Kernel.Plugins;
@@ -163,11 +164,15 @@ if (windowed)
         return 1;
     }
 
+    var playMode = services.TryRequire<IPlayModeController>(out var pmc) ? pmc : null;
+
     Console.WriteLine(
         """
         Window open — close it to exit. Commands (type + Enter):
           r <plugin-id>       reload that plugin live
           screenshot <path>   save the current frame to a PNG (needs a plugin providing IScreenCapture)
+          play                enter Play mode (needs a plugin providing IPlayModeController)
+          stop                exit Play mode, restoring the pre-Play snapshot
         """);
 
     // Line-based, not Console.ReadKey: KeyAvailable needs a real terminal
@@ -181,8 +186,12 @@ if (windowed)
         while ((line = Console.ReadLine()) is not null)
         {
             var parts = line.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-            if (parts is [var command, var argument])
-                commandQueue.Enqueue((command, argument));
+            // >= 1, not == 2: "play"/"stop" (added alongside
+            // IPlayModeController) take no argument, unlike "r <id>" and
+            // "screenshot <path>" — an empty argument is harmless for
+            // those two since they never got parsed with one anyway.
+            if (parts.Length >= 1)
+                commandQueue.Enqueue((parts[0], parts.Length > 1 ? parts[1] : ""));
         }
     });
 
@@ -236,13 +245,35 @@ if (windowed)
                     pendingScreenshots.Add(cmd.Argument);
                     break;
 
+                case "play":
+                    if (playMode is null)
+                        Console.Error.WriteLine("No loaded plugin provides IPlayModeController (e.g. engine.editor).");
+                    else
+                        playMode.EnterPlay();
+                    break;
+
+                case "stop":
+                    if (playMode is null)
+                        Console.Error.WriteLine("No loaded plugin provides IPlayModeController (e.g. engine.editor).");
+                    else
+                        playMode.ExitPlay();
+                    break;
+
                 default:
                     Console.Error.WriteLine($"Unknown command: '{cmd.Command}'");
                     break;
             }
         }
 
-        schedule.RunStage(Stage.Update, world);
+        // No IPlayModeController loaded (no engine.editor) means there's no
+        // Edit/Play distinction to make — Update always runs, same as
+        // before this plugin existed. With one loaded, Update only runs
+        // while actually Playing: Edit mode still renders the scene every
+        // frame (so the editor UI stays responsive and the view isn't
+        // frozen mid-edit), it just never ticks it.
+        if (playMode is null || playMode.IsPlaying)
+            schedule.RunStage(Stage.Update, world);
+
         schedule.RunStage(Stage.Render, world);
         schedule.RunStage(Stage.Present, world);
 

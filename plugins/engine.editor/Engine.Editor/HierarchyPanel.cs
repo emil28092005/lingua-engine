@@ -13,6 +13,8 @@ internal static class HierarchyPanel
 {
     public static void Draw(IWorld world, EditorState state)
     {
+        ImGui.SetNextWindowPos(new(10, 110), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSize(new(220, 300), ImGuiCond.FirstUseEver);
         ImGui.Begin("Hierarchy");
 
         foreach (var root in world.Roots)

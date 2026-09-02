@@ -21,6 +21,8 @@ internal static class InspectorPanel
 {
     public static void Draw(EditorState state)
     {
+        ImGui.SetNextWindowPos(new(240, 10), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSize(new(300, 400), ImGuiCond.FirstUseEver);
         ImGui.Begin("Inspector");
 
         var go = state.Selected;

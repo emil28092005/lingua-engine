@@ -17,3 +17,8 @@ Thumbs.db
 ## Build output
 out/
 artifacts/
+
+## ImGui's own persisted window layout (position/size/open-state) — a
+## per-machine editing session preference, not project source, same
+## category as an IDE's own workspace state.
+imgui.ini

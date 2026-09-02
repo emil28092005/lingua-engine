@@ -1,3 +1,4 @@
+using Engine.Editor.Contracts;
 using Engine.Input.Contracts;
 using Engine.Kernel.Diagnostics;
 using Engine.Kernel.Plugins;
@@ -31,6 +32,7 @@ public sealed class EditorPlugin : IPlugin
     private GL? _gl;
     private ImGuiController? _controller;
     private ITime? _time;
+    private PlayModeController? _playMode;
 
     public void Configure(IPluginContext ctx)
     {
@@ -42,6 +44,9 @@ public sealed class EditorPlugin : IPlugin
         _gl = window.Native.CreateOpenGL();
         _controller = new ImGuiController(_gl, window.Native, input.Native);
 
+        _playMode = new PlayModeController(ctx.World, ctx.Log);
+        ctx.Services.Provide<IPlayModeController>(_playMode);
+
         ctx.Schedule.Add(Stage.Render, DrawUi);
         ctx.Log.Info("editor UI ready (ImGui)");
     }
@@ -49,11 +54,13 @@ public sealed class EditorPlugin : IPlugin
     public void Shutdown(IPluginContext ctx)
     {
         ctx.Schedule.RemoveAllFrom("engine.editor");
+        ctx.Services.Revoke<IPlayModeController>();
         _controller?.Dispose();
         _gl?.Dispose();
         _controller = null;
         _gl = null;
         _time = null;
+        _playMode = null;
     }
 
     private void DrawUi(IWorld world)
@@ -68,9 +75,28 @@ public sealed class EditorPlugin : IPlugin
         if (_state.Selected is null && world.Roots.Count > 0)
             _state.Selected = world.Roots[0];
 
+        // FirstUseEver, not every frame: a real editor session lets the
+        // user drag panels wherever they want, and re-forcing a position
+        // every frame would fight that the moment they did. This only
+        // picks a sane, non-overlapping default before ImGui has ever
+        // seen these windows (or after Reset Layout, once that exists).
+        ImGui.SetNextWindowPos(new(10, 10), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSize(new(220, 90), ImGuiCond.FirstUseEver);
         ImGui.Begin("Lingua Editor");
         ImGui.Text($"FPS: {1f / MathF.Max(_time.DeltaTime, 0.0001f):F0}");
         ImGui.Text($"Frame: {_time.FrameCount}");
+        ImGui.Separator();
+
+        if (ImGui.Button(_playMode!.IsPlaying ? "Stop" : "Play"))
+        {
+            if (_playMode.IsPlaying)
+                _playMode.ExitPlay();
+            else
+                _playMode.EnterPlay();
+        }
+
+        ImGui.SameLine();
+        ImGui.Text(_playMode.IsPlaying ? "(Playing)" : "(Edit mode)");
         ImGui.End();
 
         HierarchyPanel.Draw(world, _state);

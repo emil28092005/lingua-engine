@@ -4,6 +4,7 @@
     <ProjectReference Include="..\Engine.Kernel\Engine.Kernel.csproj" />
     <ProjectReference Include="..\..\plugins\engine.windowing\Engine.Windowing.Contracts\Engine.Windowing.Contracts.csproj" />
     <ProjectReference Include="..\..\plugins\engine.render\Engine.Render.Contracts\Engine.Render.Contracts.csproj" />
+    <ProjectReference Include="..\..\plugins\engine.editor\Engine.Editor.Contracts\Engine.Editor.Contracts.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
