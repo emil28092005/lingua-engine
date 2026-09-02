@@ -13,4 +13,5 @@ public interface IPluginContext
     ISchedule Schedule { get; }        // systems and ordering
     IEventBus Events { get; }
     ILogger Log { get; }
+    ITime Time { get; }
 }

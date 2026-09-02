@@ -14,11 +14,13 @@ internal sealed class PluginContext(
     IWorld world,
     IServiceRegistry services,
     ISchedule schedule,
-    IEventBus events) : IPluginContext
+    IEventBus events,
+    ITime time) : IPluginContext
 {
     public IWorld World { get; } = world;
     public IServiceRegistry Services { get; } = services;
     public ISchedule Schedule { get; } = schedule;
     public IEventBus Events { get; } = events;
     public ILogger Log { get; } = new ConsoleLogger(pluginId);
+    public ITime Time { get; } = time;
 }

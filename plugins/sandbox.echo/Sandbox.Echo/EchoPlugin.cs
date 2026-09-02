@@ -18,6 +18,12 @@ public sealed class EchoPlugin : IPlugin
         ctx.Schedule.Add(Stage.Update, Tick)
            .Writes<Ping>();
 
+        // A real cross-ALC subscription, not just a system — this is what
+        // makes the 200-cycle leak test in AlcUnloadTests actually prove
+        // EventBus.RemoveAllFrom works, the same way registering Tick
+        // above proves it for Schedule.RemoveAllFrom.
+        ctx.Events.Subscribe<PluginLoaded>(OnPluginLoaded);
+
         // There's no scene format yet (that's M2) — nothing else will ever
         // put a GameObject in front of `engine run --headless`, so this
         // deliberately-a-test-fixture plugin seeds its own. A real plugin
@@ -30,6 +36,7 @@ public sealed class EchoPlugin : IPlugin
     public void Shutdown(IPluginContext ctx)
     {
         ctx.Schedule.RemoveAllFrom("sandbox.echo");
+        ctx.Events.RemoveAllFrom("sandbox.echo");
     }
 
     static void Tick(IWorld world)
@@ -37,4 +44,7 @@ public sealed class EchoPlugin : IPlugin
         foreach (var go in world.Query<Ping>())
             go.GetComponent<Ping>()!.Count++;
     }
+
+    static void OnPluginLoaded(PluginLoaded evt) =>
+        Console.WriteLine($"[sandbox.echo] observed load of '{evt.PluginId}'");
 }

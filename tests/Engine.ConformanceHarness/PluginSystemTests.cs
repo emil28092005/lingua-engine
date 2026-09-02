@@ -1,3 +1,4 @@
+using Engine.Kernel.Diagnostics;
 using Engine.Kernel.Events;
 using Engine.Kernel.Plugins;
 using Engine.Kernel.Scheduling;
@@ -28,7 +29,7 @@ public class PluginSystemTests
     {
         var world = new GameWorld();
         var schedule = new Schedule();
-        var host = new PluginHost(world, new ServiceRegistry(), schedule, new NullEventBus());
+        var host = new PluginHost(world, new ServiceRegistry(), schedule, new EventBus(), new Time());
 
         var ping = world.CreateGameObject("Pinger").AddComponent<Ping>();
         var id = host.Load(PluginDirectory);
@@ -46,7 +47,7 @@ public class PluginSystemTests
     {
         var world = new GameWorld();
         var schedule = new Schedule();
-        var host = new PluginHost(world, new ServiceRegistry(), schedule, new NullEventBus());
+        var host = new PluginHost(world, new ServiceRegistry(), schedule, new EventBus(), new Time());
 
         var ping = world.CreateGameObject("Pinger").AddComponent<Ping>();
         var id = host.Load(PluginDirectory);
@@ -55,5 +56,35 @@ public class PluginSystemTests
         schedule.RunStage(Stage.Update, world);
 
         Assert.Equal(0, ping.Count);
+    }
+
+    [Fact]
+    public void Loading_A_Plugin_Publishes_PluginLoaded_With_Its_Id()
+    {
+        var world = new GameWorld();
+        var events = new EventBus();
+        var host = new PluginHost(world, new ServiceRegistry(), new Schedule(), events, new Time());
+        string? observedId = null;
+        events.Subscribe<PluginLoaded>(e => observedId = e.PluginId);
+
+        var id = host.Load(PluginDirectory);
+
+        Assert.Equal("sandbox.echo", observedId);
+        host.Unload(id);
+    }
+
+    [Fact]
+    public void Unloading_A_Plugin_Publishes_PluginUnloaded_With_Its_Id()
+    {
+        var world = new GameWorld();
+        var events = new EventBus();
+        var host = new PluginHost(world, new ServiceRegistry(), new Schedule(), events, new Time());
+        var id = host.Load(PluginDirectory);
+        string? observedId = null;
+        events.Subscribe<PluginUnloaded>(e => observedId = e.PluginId);
+
+        host.Unload(id);
+
+        Assert.Equal("sandbox.echo", observedId);
     }
 }

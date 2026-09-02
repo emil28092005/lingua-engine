@@ -1,4 +1,5 @@
 using System.Runtime.Loader;
+using Engine.Kernel.Diagnostics;
 using Engine.Kernel.Events;
 using Engine.Kernel.Plugins;
 using Engine.Kernel.Scheduling;
@@ -22,7 +23,7 @@ public class AlcUnloadTests
         Path.Combine(AppContext.BaseDirectory, "plugins", "sandbox.echo");
 
     private static PluginHost NewHost() =>
-        new(new GameWorld(), new ServiceRegistry(), new Schedule(), new NullEventBus());
+        new(new GameWorld(), new ServiceRegistry(), new Schedule(), new EventBus(), new Time());
 
     [Fact]
     public void Plugin_Survives_200_Load_Unload_Cycles()

@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
+using Engine.Kernel.Diagnostics;
 using Engine.Kernel.Events;
 using Engine.Kernel.Scheduling;
 using Engine.Kernel.Services;
@@ -22,7 +23,12 @@ namespace Engine.Kernel.Plugins;
 /// will fail wherever its own code first touches them, not with a
 /// host-level error.
 /// </summary>
-public sealed class PluginHost(IWorld world, IServiceRegistry services, Schedule schedule, IEventBus events)
+public sealed class PluginHost(
+    IWorld world,
+    IServiceRegistry services,
+    Schedule schedule,
+    EventBus events,
+    ITime time)
 {
     private static readonly JsonSerializerOptions ManifestOptions = new()
     {
@@ -64,11 +70,13 @@ public sealed class PluginHost(IWorld world, IServiceRegistry services, Schedule
         var instance = (IPlugin)Activator.CreateInstance(pluginType)!;
 
         schedule.RegisterPlugin(manifest.Id, implAssembly);
-        var ctx = new PluginContext(manifest.Id, world, services, schedule, events);
+        events.RegisterPlugin(manifest.Id, implAssembly);
+        var ctx = new PluginContext(manifest.Id, world, services, schedule, events, time);
 
         instance.Configure(ctx);
 
         _loaded[manifest.Id] = new LoadedPlugin(manifest, alc, instance, ctx);
+        events.Publish(new PluginLoaded(manifest.Id));
         return manifest.Id;
     }
 
@@ -120,6 +128,7 @@ public sealed class PluginHost(IWorld world, IServiceRegistry services, Schedule
         var weakAlc = new WeakReference(loaded.Alc);
         loaded.Alc.Unload();
 
+        events.Publish(new PluginUnloaded(pluginId));
         return weakAlc;
     }
 

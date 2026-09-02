@@ -116,7 +116,9 @@ if (projectPath is null || pluginsPath is null)
 var world = new GameWorld();
 var schedule = new Schedule();
 var services = new ServiceRegistry();
-var host = new PluginHost(world, services, schedule, new NullEventBus());
+var events = new EventBus();
+var time = new Time();
+var host = new PluginHost(world, services, schedule, events, time);
 
 IReadOnlyList<string> loaded;
 try
@@ -164,11 +166,16 @@ if (windowed)
     });
 
     var frameCount = 0;
+    var lastTime = window!.Native.Time;
 
-    while (!window!.IsClosing)
+    while (!window.IsClosing)
     {
         frameCount++;
         window.Native.DoEvents();
+
+        var currentTime = window.Native.Time;
+        time.Tick((float)(currentTime - lastTime));
+        lastTime = currentTime;
 
         if (window.IsClosing)
             break;
@@ -244,8 +251,17 @@ if (windowed)
 }
 else
 {
+    // No wall clock to measure — headless runs as fast as the CPU allows,
+    // not once per real 1/60s. A fixed nominal delta keeps ITime.DeltaTime
+    // meaningful for systems that use it, and keeps headless runs
+    // deterministic, which --windowed's real wall-clock delta can't be.
+    const float headlessDeltaTime = 1f / 60f;
+
     for (var frame = 0; frame < frames; frame++)
+    {
+        time.Tick(headlessDeltaTime);
         schedule.RunStage(Stage.Update, world);
+    }
 
     Console.WriteLine($"Ran {frames} update frame(s).");
 }

@@ -1,3 +1,4 @@
+using Engine.Kernel.Diagnostics;
 using Engine.Kernel.Events;
 using Engine.Kernel.Plugins;
 using Engine.Kernel.Scheduling;
@@ -14,7 +15,7 @@ namespace Engine.Kernel.Tests;
 public class PluginHostTests
 {
     private static PluginHost NewHost() =>
-        new(new GameWorld(), new ServiceRegistry(), new Schedule(), new NullEventBus());
+        new(new GameWorld(), new ServiceRegistry(), new Schedule(), new EventBus(), new Time());
 
     [Fact]
     public void Load_Throws_When_The_Directory_Has_No_Manifest()

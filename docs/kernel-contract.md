@@ -53,8 +53,8 @@ nothing.
 | 02 | **Scheduler** | Frame stages, topological system ordering, parallel execution of systems with disjoint declared access, and debug-mode enforcement of that access — see §7. Structural changes (adding/removing a `GameObject` or `Component`) are queued and applied at the stage boundary, so a running system never sees a collection mutate under it. |
 | 03 | **Plugin Host** | Manifest parsing, dependency resolution, ALC loading, unloading, reload. |
 | 04 | **Service Registry** | Publishing and discovering interfaces between plugins. Control path, not the hot path. |
-| 05 | **Event Bus** | Decoupled notifications: `GameObject` created, asset reloaded, plugin unloaded. |
-| 06 | **Time & Log** | Frame clock, fixed-step accumulator, logging interface. Kept minimal. |
+| 05 | **Event Bus** | `Publish`/`Subscribe`, ownership-tracked and leak-safe the same way as the Scheduler's systems — see §7. `PluginHost` publishes `PluginLoaded`/`PluginUnloaded`; nothing publishes `GameObject` created/destroyed or asset-reloaded facts yet — the first because `GameWorld` doesn't touch the bus at all (a publish on every structural change would tax the hot path for listeners that usually don't exist), the second because there's no asset system yet. |
+| 06 | **Time & Log** | Frame clock (`DeltaTime`, `ElapsedTime`, `FrameCount`) and logging, both on `IPluginContext`. No fixed-step accumulator yet — deferred to M4, alongside the physics system it would actually drive. |
 
 `GameObject.Transform` is the one field embedded directly rather than
 modeled as a `Component` subclass — it's a plain struct holding local
@@ -161,8 +161,9 @@ public interface IPluginContext
     IWorld           World    { get; }  // data
     IServiceRegistry Services { get; }  // Provide<T> / Require<T>
     ISchedule        Schedule { get; }  // systems and ordering
-    IEventBus        Events   { get; }
+    IEventBus        Events   { get; }  // Publish / Subscribe
     ILogger          Log      { get; }
+    ITime            Time     { get; }  // DeltaTime, ElapsedTime, FrameCount
 }
 ```
 
@@ -429,10 +430,44 @@ cost of changing course is still zero.
 
 ---
 
-Open questions to resolve before M0: whether `Time` and `Log` belong in the
-kernel or as plugins; whether the Event Bus is needed at launch or whether
-event-components in `World` cover its role; whether the set of frame stages
-is fixed or plugin-extensible; and whether a data-oriented fast path (for
-bulk operations like particles) is worth introducing later without
-abandoning GameObject/Component for everything else. Assembly names in the
-examples are placeholders.
+**The kernel's open questions are resolved.** What M0 shipped without
+deciding, in order:
+
+- **`Time` and `Log`: both in the kernel**, both on `IPluginContext`. Every
+  plugin needs logging and a frame clock; there's no realistic case for a
+  project wanting to swap either out per-project the way it would swap
+  physics or rendering. `Log` was already built this way by the time the
+  question got asked explicitly — `Time` (`DeltaTime`, `ElapsedTime`,
+  `FrameCount`) shipped alongside closing the question, not before it.
+  **Explicitly still deferred:** the fixed-step accumulator the original
+  kernel scope named alongside the frame clock. Building it now, with no
+  physics system to test it against, would be untested speculative
+  machinery — exactly what this project has avoided everywhere else. It
+  arrives with M4, alongside the `Stage.FixedUpdate` it would drive.
+- **Event Bus: real, not event-components in `World`.** A disposable
+  event-as-`GameObject` fits a pure ECS's cheap-entity model better than
+  ours, where `GameObject` carries persistent identity and hierarchy. A
+  conventional `Publish`/`Subscribe` bus is the better fit for this object
+  model specifically. `PluginHost` publishing `PluginLoaded` /
+  `PluginUnloaded` is the concrete proof it's real infrastructure, not an
+  API nobody calls — and `Subscribe`/`RemoveAllFrom` follow the exact
+  leak-safety shape `Schedule` already established (ownership tracked by
+  the subscribing delegate's declaring assembly), proven the same way:
+  `sandbox.echo` subscribes for real, and the 200-cycle leak test in
+  `AlcUnloadTests` now exercises that cleanup path, not just `Schedule`'s.
+- **Frame stages: fixed, kernel-defined — not plugin-extensible.** A stage
+  is part of the shared language every plugin and the host loop rely on;
+  letting plugins register arbitrary custom stages would mean the host's
+  frame loop can no longer just call a known, closed set of `RunStage`s.
+  The set stays `{Update, Render}` until `FixedUpdate` arrives with M4 — no
+  stage gets added without something real to run in it.
+- **Data-oriented fast path: still open, on purpose, with a trigger
+  condition instead of a deadline.** Not "undecided" the way the other
+  three were — deliberately not worth deciding before there's a concrete
+  system to decide it against. Revisit when a specific system (particles is
+  the standing example) needs tens of thousands of `GameObject`s updated
+  per frame *and* profiling — not intuition — shows `GameObject`/`Component`
+  overhead is the actual bottleneck. Until then, an early decision here
+  would be optimizing against a guess.
+
+Assembly names in the examples are placeholders.
