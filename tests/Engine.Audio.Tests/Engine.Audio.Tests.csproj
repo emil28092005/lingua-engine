@@ -15,11 +15,21 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Content Include="../../plugins/engine.audio/Engine.Audio/native/liblingua_audio.so">
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <Content Include="../../plugins/engine.audio/Engine.Audio/native/linux-x64/liblingua_audio.so">
       <Link>liblingua_audio.so</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <Content Include="../../plugins/engine.audio/Engine.Audio/native/win-x64/lingua_audio.dll">
+      <Link>lingua_audio.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Include="assets/test_tone.wav">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

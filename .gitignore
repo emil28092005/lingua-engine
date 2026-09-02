@@ -39,3 +39,9 @@ native/*/.fetchcontent-cache/
 ## the .csproj, and the .cs files there stay tracked.
 samples/*/GamePlugins/*/*.dll
 samples/*/GamePlugins/*/*.pdb
+
+## Windows builds of the native physics/audio shims — nothing here can
+## build or verify one (no Windows machine), so unlike linux-x64's .so,
+## win-x64's .dll is never committed. .github/workflows/build.yml's
+## Windows job builds it fresh into this exact path before `dotnet build`.
+**/native/win-x64/

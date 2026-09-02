@@ -1,0 +1,123 @@
+name: Build
+
+# M4's "done when": the build runs on both platforms with no editor
+# plugins in the shipped binary. Neither half of that is verifiable from
+# a single Linux dev machine — this workflow is what actually proves it,
+# real builds on real ubuntu-latest and windows-latest runners, not just
+# a cross-platform-looking csproj and hope.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+          - os: windows-latest
+            rid: win-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Build native physics shim (Box3D, pinned commit — see native/physics-native/CMakeLists.txt)
+        shell: bash
+        run: |
+          cmake -S native/physics-native -B native/physics-native/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build native/physics-native/build --config Release
+
+      - name: Build native audio shim (miniaudio)
+        shell: bash
+        run: |
+          cmake -S native/audio-native -B native/audio-native/build -DCMAKE_BUILD_TYPE=Release
+          cmake --build native/audio-native/build --config Release
+
+      # linux-x64's .so is committed (built and verified on the dev
+      # machine); win-x64's .dll can only ever be produced here, since
+      # nothing else in this project can build or run one to check it —
+      # landing it at exactly the path Engine.Physics.csproj/Engine.Audio.
+      # csproj's win-x64 Content item expects.
+      - name: Place win-x64 native libraries
+        if: matrix.rid == 'win-x64'
+        shell: bash
+        run: |
+          mkdir -p plugins/engine.physics/Engine.Physics/native/win-x64
+          mkdir -p plugins/engine.audio/Engine.Audio/native/win-x64
+          find native/physics-native/build -iname "lingua_physics.dll" -exec cp {} plugins/engine.physics/Engine.Physics/native/win-x64/lingua_physics.dll \;
+          find native/audio-native/build -iname "lingua_audio.dll" -exec cp {} plugins/engine.audio/Engine.Audio/native/win-x64/lingua_audio.dll \;
+          test -f plugins/engine.physics/Engine.Physics/native/win-x64/lingua_physics.dll
+          test -f plugins/engine.audio/Engine.Audio/native/win-x64/lingua_audio.dll
+
+      - name: Build
+        run: dotnet build LinguaEngine.sln -c Release
+
+      # Nothing in the suite opens a real GL window or a real audio device
+      # (Engine.Audio.Tests forces miniaudio's null backend specifically so
+      # this works) — the whole thing runs headless on both runners.
+      - name: Test
+        run: dotnet test LinguaEngine.sln -c Release --no-build
+
+      - name: Stage the shippable build (engine.editor deliberately excluded)
+        shell: bash
+        run: |
+          set -euo pipefail
+          DIST="dist/${{ matrix.rid }}"
+          STAGE="$DIST/plugins"
+          mkdir -p "$STAGE"
+
+          for id in engine.windowing engine.assets engine.render engine.input engine.physics engine.audio; do
+            impl="$(awk -F. '{for(i=1;i<=NF;i++){$i=toupper(substr($i,1,1)) substr($i,2)}}1' OFS=. <<<"$id")"
+            src="plugins/$id/$impl/bin/Release/net9.0"
+            mkdir -p "$STAGE/$id"
+            cp -r "$src/." "$STAGE/$id/"
+            cp "plugins/$id/plugin.json" "$STAGE/$id/"
+          done
+
+          mkdir -p "$DIST/engine"
+          cp -r src/Engine.Host/bin/Release/net9.0/. "$DIST/engine/"
+
+          GAME_DST="$DIST/samples/PhysicsDemo/GamePlugins/physics-demo-game"
+          mkdir -p "$GAME_DST"
+          cp -r samples/PhysicsDemo/GamePlugins/physics-demo-game/bin/Release/net9.0/. "$GAME_DST/"
+          cp samples/PhysicsDemo/GamePlugins/physics-demo-game/plugin.json "$GAME_DST/"
+
+          cp -r samples/PhysicsDemo/assets "$DIST/samples/PhysicsDemo/assets"
+          cp samples/PhysicsDemo/project.json samples/PhysicsDemo/scene.json "$DIST/samples/PhysicsDemo/"
+
+      - name: Verify the shippable build actually runs (headless, real physics + real scene load)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Absolute paths only: Assembly.LoadFromAssemblyPath (which
+          # PluginHost.Load uses) throws on a relative one — found by
+          # hand running this exact staging locally before trusting it to
+          # a workflow run at all.
+          DIST="$(pwd)/dist/${{ matrix.rid }}"
+          cd "$DIST/samples/PhysicsDemo"
+          dotnet "$DIST/engine/Engine.Host.dll" run --headless \
+            --plugins "$DIST/plugins" --project project.json --scene scene.json \
+            --frames 200 --dump dump.json
+          cat dump.json
+          python3 -c "
+          import json
+          data = json.load(open('dump.json'))
+          box = next(o for o in data if o['name'] == 'DemoBox')
+          y = box['transform']['position'][1]
+          assert 0.9 < y < 1.1, f'DemoBox should have settled near y=1.0, got y={y}'
+          print(f'DemoBox settled at y={y:.4f} — physics ran for real on ${{ matrix.rid }}')
+          "
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lingua-engine-${{ matrix.rid }}
+          path: dist/${{ matrix.rid }}

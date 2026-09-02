@@ -7,18 +7,31 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- The compiled native shim (Box3D folded in) — see
-         native/physics-native/. Copied straight into this plugin's own
-         output directory (not a runtimes/<rid>/native/ NuGet-style path):
-         DllImport's default unmanaged-library probing already checks the
-         calling assembly's own directory, and PluginLoadContext.
-         LoadUnmanagedDll falls back to that default probing whenever its
-         AssemblyDependencyResolver doesn't recognize the name (returning
-         IntPtr.Zero, not failing outright) — confirmed empirically, see
-         PhysicsWorldTests. -->
-    <Content Include="native/liblingua_physics.so">
+  <!-- The compiled native shim (Box3D folded in) — see
+       native/physics-native/. Copied straight into this plugin's own
+       output directory (not a runtimes/<rid>/native/ NuGet-style path):
+       DllImport's default unmanaged-library probing already checks the
+       calling assembly's own directory, and PluginLoadContext.
+       LoadUnmanagedDll falls back to that default probing whenever its
+       AssemblyDependencyResolver doesn't recognize the name (returning
+       IntPtr.Zero, not failing outright) — confirmed empirically, see
+       PhysicsWorldTests.
+
+       Picked by the BUILDING machine's OS, not cross-compiled: linux-x64's
+       .so is committed (built and verified here); win-x64's .dll is never
+       committed — nothing here can build or run one to verify — and is
+       instead produced fresh by .github/workflows/build.yml's Windows job
+       right before `dotnet build` runs, landing at exactly this path. -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <Content Include="native/linux-x64/liblingua_physics.so">
       <Link>liblingua_physics.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <Content Include="native/win-x64/lingua_physics.dll">
+      <Link>lingua_physics.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

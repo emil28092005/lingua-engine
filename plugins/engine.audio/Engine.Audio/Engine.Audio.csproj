@@ -4,13 +4,18 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Same reasoning as engine.physics' own native Content item: default
-         DllImport probing already checks the calling assembly's directory,
-         so this is copied straight alongside Engine.Audio.dll rather than
-         through a runtimes/<rid>/native/ path. -->
-    <Content Include="native/liblingua_audio.so">
+  <!-- Same reasoning as engine.physics' own native Content item — see
+       there for why linux-x64 is committed and win-x64 isn't. -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <Content Include="native/linux-x64/liblingua_audio.so">
       <Link>liblingua_audio.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <Content Include="native/win-x64/lingua_audio.dll">
+      <Link>lingua_audio.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

@@ -15,13 +15,18 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Same native shim Engine.Physics itself ships — see that project's
-         own Content item for why it's copied directly (not under a
-         runtimes/<rid>/native/ path) rather than referenced some other
-         way. -->
-    <Content Include="../../plugins/engine.physics/Engine.Physics/native/liblingua_physics.so">
+  <!-- Same native shim Engine.Physics itself ships, same per-OS split —
+       see that project's own Content items. -->
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <Content Include="../../plugins/engine.physics/Engine.Physics/native/linux-x64/liblingua_physics.so">
       <Link>liblingua_physics.so</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <Content Include="../../plugins/engine.physics/Engine.Physics/native/win-x64/lingua_physics.dll">
+      <Link>lingua_physics.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
